@@ -5,44 +5,72 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 
 // Command-line helpers for the Quest hello world.
-//   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.AddHelloWorld -quit
+//   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.CreateHelloScene -quit
 //   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.BuildQuest -quit
-// Add -forgeSetup to BuildQuest to run Forge.EditorTools.ForgeQuestSetup.Run() (all [ForgeSetupStep]s) first:
+// Add -forgeSetup to BuildQuest to run Forge.EditorTools.ForgeQuestSetup.Run() (all [ForgeSetupStep]s) first,
+// which also makes ForgeQuest the only build scene:
 //   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.BuildQuest -forgeSetup -quit
 // All are also available from the "Forge" menu in the editor.
 public static class ForgeBuild
 {
-    const string ScenePath = "Assets/Scenes/SampleScene.unity";
+    const string ScenePath = "Assets/Scenes/HelloWorld.unity";
+    const string RigPrefabPath = "Assets/VRTemplateAssets/Prefabs/Setup/Complete XR Origin Set Up Hands Variant.prefab";
     const string ApkPath = "Builds/ForgeXR.apk";
 
-    [MenuItem("Forge/Add Hello World Sign")]
-    public static void AddHelloWorld()
+    // Builds a minimal scene: XR rig at the origin, teleportable floor, light,
+    // and a "Hello World!" sign 1.5 m in front of the starting position.
+    // Overwrites Assets/Scenes/HelloWorld.unity and makes it the only build scene.
+    [MenuItem("Forge/Create Clean Hello World Scene")]
+    public static void CreateHelloScene()
     {
-        var scene = EditorSceneManager.OpenScene(ScenePath);
-        // Scan root objects instead of GameObject.Find, which misses the sign once setup has deactivated it.
-        var exists = false;
-        foreach (var root in scene.GetRootGameObjects())
-            if (root.name == "HelloWorld") { exists = true; break; }
-        if (!exists)
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        var light = new GameObject("Directional Light").AddComponent<Light>();
+        light.type = LightType.Directional;
+        light.intensity = 1.2f;
+        light.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+
+        var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        floor.name = "Floor";
+        floor.transform.localScale = new Vector3(2f, 1f, 2f); // 20 m x 20 m
+        floor.AddComponent<TeleportationArea>();
+
+        var rigPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RigPrefabPath);
+        if (rigPrefab == null)
+            throw new FileNotFoundException("XR rig prefab not found", RigPrefabPath);
+        var rig = (GameObject)PrefabUtility.InstantiatePrefab(rigPrefab, scene);
+        rig.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+        if (Object.FindAnyObjectByType<XRInteractionManager>() == null)
+            new GameObject("XR Interaction Manager").AddComponent<XRInteractionManager>();
+        if (Object.FindAnyObjectByType<EventSystem>() == null)
         {
-            var go = new GameObject("HelloWorld");
-            go.transform.position = new Vector3(0f, 1.8f, 2f); // ~2 m in front, slightly above eye level
-            var tmp = go.AddComponent<TextMeshPro>();
-            tmp.text = "Hello World!";
-            tmp.fontSize = 3f;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
-            tmp.rectTransform.sizeDelta = new Vector2(3f, 1f);
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene);
-            Debug.Log("[ForgeBuild] Added HelloWorld sign to " + ScenePath);
+            var es = new GameObject("EventSystem");
+            es.AddComponent<EventSystem>();
+            es.AddComponent<XRUIInputModule>();
         }
-        else
-        {
-            Debug.Log("[ForgeBuild] HelloWorld sign already present");
-        }
+
+        var sign = new GameObject("HelloWorld");
+        sign.transform.position = new Vector3(0f, 1.5f, 1.5f); // eye height, 1.5 m ahead
+        var tmp = sign.AddComponent<TextMeshPro>();
+        tmp.text = "Hello World!";
+        tmp.fontSize = 2.5f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.rectTransform.sizeDelta = new Vector2(3f, 1f);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+        AssetDatabase.SaveAssets();
+        Debug.Log("[ForgeBuild] Created " + ScenePath + " and set it as the only build scene");
     }
 
     [MenuItem("Forge/Setup + Build Quest APK")]
@@ -65,6 +93,7 @@ public static class ForgeBuild
 
         if (runSetup)
         {
+            // Runs before the scene list below is read, so the build picks up ForgeQuest.
             Debug.Log("[ForgeBuild] Running Forge setup before build");
             Forge.EditorTools.ForgeQuestSetup.Run();
         }
@@ -79,7 +108,10 @@ public static class ForgeBuild
         Directory.CreateDirectory(Path.GetDirectoryName(ApkPath));
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
-            scenes = new[] { ScenePath },
+            // Whatever is enabled in Build Settings: HelloWorld after CreateHelloScene,
+            // ForgeQuest after Forge.EditorTools.ForgeQuestSetup.Run.
+            scenes = System.Array.ConvertAll(
+                System.Array.FindAll(EditorBuildSettings.scenes, s => s.enabled), s => s.path),
             locationPathName = ApkPath,
             target = BuildTarget.Android,
             options = BuildOptions.None,

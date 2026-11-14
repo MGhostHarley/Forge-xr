@@ -26,10 +26,14 @@ namespace Forge.EditorTools
 
         const string ArSessionName = "AR Session";
 
-        /// <summary>Template scene roots that have no place in the AR app.</summary>
+        /// <summary>
+        /// Template scene roots that have no place in the AR app. "Floor" (grey plane + teleport area)
+        /// and "HelloWorld" come from HelloWorld.unity; the rest only exist in the old VR-template scene.
+        /// Keeps Directional Light, EventSystem and XR Interaction Manager.
+        /// </summary>
         static readonly string[] TemplateRootsToDisable =
         {
-            "Environment", "HelloWorld", "UI", "Interactables", "Teleport Area Setup",
+            "Floor", "HelloWorld", "Environment", "UI", "Interactables", "Teleport Area Setup",
         };
 
         /// <summary>Template objects inside the XR Origin to disable (searched recursively).</summary>
@@ -150,9 +154,13 @@ namespace Forge.EditorTools
         [ForgeSetupStep(140)]
         static void DisableTemplateRoots()
         {
-            foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
-                if (Array.IndexOf(TemplateRootsToDisable, root.name) >= 0)
-                    root.SetActive(false);
+            var roots = EditorSceneManager.GetActiveScene().GetRootGameObjects();
+            foreach (var name in TemplateRootsToDisable)
+            {
+                var root = Array.Find(roots, r => r.name == name);
+                if (root != null) root.SetActive(false);
+                else Debug.Log($"[ForgeSetup] Root '{name}' not in scene, nothing to disable");
+            }
         }
 
         // ------------------------------------------------------------------ 150
@@ -165,7 +173,7 @@ namespace Forge.EditorTools
             {
                 var t = FindDeep(origin, name);
                 if (t != null) t.gameObject.SetActive(false);
-                else Debug.LogWarning($"[ForgeSetup] '{name}' not found under XR Origin");
+                else Debug.Log($"[ForgeSetup] '{name}' not found under XR Origin, nothing to disable");
             }
         }
 
