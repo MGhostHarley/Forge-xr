@@ -11,7 +11,7 @@ namespace Forge
     /// IsComplete, CurrentInstruction) works on a disabled behaviour, while its desktop OnGUI
     /// (IMGUI panel + Space key) only runs when enabled. Awake enforces enabled = false.
     ///
-    /// After every change this pushes "n/N - instruction" (Harley's completion message,
+    /// After every change this pushes "n/N: instruction" (Harley's completion message,
     /// without counter, when complete) to the FloatingCue, sets the Next label
     /// (Next / Done / Start over) and highlights the step's parts (nothing when complete).
     /// NextInput: Next = Advance (Start over when complete), Reset = step 1,
@@ -46,7 +46,7 @@ namespace Forge
 
         [Tooltip("Cue text per step. {0} = step number (1-based), {1} = step count, {2} = Harley's instruction. " +
                  "Plain text by default; add TMP rich text such as <size=70%> if FloatingCue renders it.")]
-        [SerializeField] string stepFormat = "{0}/{1} - {2}";
+        [SerializeField] string stepFormat = "{0}/{1}: {2}";
 
         const int MaxProbeSteps = 64;
         int stepCount;
