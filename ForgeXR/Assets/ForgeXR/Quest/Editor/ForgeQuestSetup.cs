@@ -29,11 +29,23 @@ namespace Forge.EditorTools
     /// </summary>
     public static class ForgeQuestSetup
     {
-        public const string ScenePath = "Assets/Scenes/SampleScene.unity";
+        /// <summary>The Quest scene all setup steps act on. Becomes the only build scene.</summary>
+        public const string ScenePath = "Assets/Scenes/ForgeQuest.unity";
+
+        /// <summary>Clean scene (Hands rig at the origin) that ForgeQuest is copied from once.
+        /// ForgeBuild.CreateHelloScene regenerates this file from scratch, so setup never edits it.</summary>
+        public const string SourceScenePath = "Assets/Scenes/HelloWorld.unity";
 
         [MenuItem("Forge/Setup Passthrough Scene")]
         public static void Run()
         {
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) == null)
+            {
+                if (!AssetDatabase.CopyAsset(SourceScenePath, ScenePath))
+                    throw new System.IO.FileNotFoundException("Could not copy source scene", SourceScenePath);
+                Debug.Log($"[ForgeSetup] Created {ScenePath} from {SourceScenePath}");
+            }
+
             var scene = EditorSceneManager.OpenScene(ScenePath);
 
             var steps = TypeCache.GetMethodsWithAttribute<ForgeSetupStepAttribute>()
@@ -60,6 +72,7 @@ namespace Forge.EditorTools
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
+            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
             Debug.Log($"[ForgeSetup] Ran {steps.Count} step(s), failed={failed}");
 
