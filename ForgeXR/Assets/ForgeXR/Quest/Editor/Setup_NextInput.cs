@@ -8,7 +8,7 @@ namespace Forge.EditorTools
 {
     /// <summary>
     /// Chunk 4 setup steps (400-499): NextInput, the FloatingCue (instruction line + pinch Next/Reset
-    /// buttons that float above the highlighted piece), and the temporary MilestoneSequence harness.
+    /// buttons that float above the highlighted piece).
     /// All steps are find-or-create by name and safe to run twice.
     ///
     /// FloatingCue local frame (FloatingCue positions and yaws it at runtime; the viewer is on its -Z side):
@@ -130,18 +130,6 @@ namespace Forge.EditorTools
             so.FindProperty("nextButton").objectReferenceValue = next;
             so.FindProperty("resetButton").objectReferenceValue = reset;
             so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        // TEMPORARY: delete with MilestoneSequence when Harley's walkthrough lands.
-        [ForgeSetupStep(420)]
-        public static void CreateMilestoneSequence()
-        {
-            var rig = ForgeSetupUtil.GetOrCreateRoot(ForgeScene.RigRoot);
-            var go = ForgeSetupUtil.GetOrCreateChild(rig.transform, MilestoneName);
-            var seq = ForgeSetupUtil.GetOrAdd<MilestoneSequence>(go);
-            var cue = GetCue();
-            seq.Configure(GetNextInput(), cue.Text, cue);
-            EditorUtility.SetDirty(seq);
         }
 
         static GameObject GetCueRoot(out bool created)

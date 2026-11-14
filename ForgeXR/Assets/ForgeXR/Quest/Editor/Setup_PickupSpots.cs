@@ -137,11 +137,12 @@ namespace Forge.EditorTools
             }
         }
 
+        /// <summary>DefaultHighlight is retired (QuestWalkthroughDriver sets the highlight); remove its missing script.</summary>
         [ForgeSetupStep(230)]
-        public static void AddDefaultHighlight()
+        public static void RemoveRetiredRigScripts()
         {
             var rig = ForgeSetupUtil.GetOrCreateRoot(ForgeScene.RigRoot);
-            ForgeSetupUtil.GetOrAdd<DefaultHighlight>(rig);
+            GameObjectUtility.RemoveMonoBehavioursWithMissingScript(rig);
         }
 
         // ---------- scene helpers ----------

@@ -166,7 +166,6 @@ namespace Forge
             input.onReset.RemoveListener(OnReset);
         }
 
-        // Start runs after DefaultHighlight's Awake, so the walkthrough's highlight wins.
         void Start() => Select(Flow.Driver, "start");
 
         void Update()

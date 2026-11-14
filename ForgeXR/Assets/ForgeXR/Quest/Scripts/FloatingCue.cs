@@ -20,7 +20,7 @@ namespace Forge
     /// While any of its buttons is hovered or selected, position and heading freeze so the target never
     /// moves under the ray. Heading is yaw-only, facing the viewer (local +Z points away from them).
     /// </summary>
-    [DefaultExecutionOrder(200)] // after MilestoneSequence (100) sets the highlight in Start
+    [DefaultExecutionOrder(200)] // after the walkthrough sets the highlight in Start
     public class FloatingCue : MonoBehaviour
     {
         public enum Mode { None, Tracking, Held, Fallback }

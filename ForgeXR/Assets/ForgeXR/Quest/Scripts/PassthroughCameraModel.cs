@@ -304,6 +304,7 @@ namespace Forge
             lensT = new Vector3(p.t[0], p.t[1], p.t[2]);
             lensQ = new Quaternion(p.q[0], p.q[1], p.q[2], p.q[3]);
             timestampSource = p.tsSource;
+            HasLensPose = true; // so the log below shows the pose actually used, not the fallback
             LensInfo = $"using camera {p.id} t={lensT:F4} q={lensQ:F4} headFromCamera={HeadFromCamera().position:F3}/{HeadFromCamera().rotation.eulerAngles:F1}. All: {log}";
             return true;
         }

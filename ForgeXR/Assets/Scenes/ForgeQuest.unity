@@ -496,6 +496,7 @@ MonoBehaviour:
   touchPartId: torso
   touchHeight: 0.02
   touchHoldSeconds: 0.4
+  moveHoldSeconds: 2
   fakeDetections:
   - partId: torso
     imagePoint: {x: 0.5, y: 0.5}
@@ -512,7 +513,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 237134909}
-  - component: {fileID: 237134908}
   m_Layer: 0
   m_Name: ForgeRig
   m_TagString: Untagged
@@ -520,20 +520,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &237134908
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 237134907}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5e8b730a4d2d71fe5a8a9f0f4d324a61, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Forge.DefaultHighlight
-  ids:
-  - torso
 --- !u!4 &237134909
 Transform:
   m_ObjectHideFlags: 0
@@ -631,6 +617,7 @@ MonoBehaviour:
   handHoldSeconds: 4
   handNearDistance: 0.1
   showIdleSpots: 1
+  missedGraceSeconds: 0.4
 --- !u!114 &245596509
 MonoBehaviour:
   m_ObjectHideFlags: 0
