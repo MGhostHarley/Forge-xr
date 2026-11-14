@@ -22,7 +22,8 @@ namespace Forge.EditorTools
         const string PlanePrefabPath = GeneratedDir + "/ForgeTablePlane.prefab";
 
         // Mat footprint in the mat frame (x = builder's left-right, z = depth). The four 6 cm spots span 18 cm in x.
-        static readonly Vector2 MatFootprint = new(0.30f, 0.14f);
+        // Matches chunk 2's MatFrame (Setup_PickupSpots MatWidth x MatDepth), which is the only mat outline.
+        static readonly Vector2 MatFootprint = new(0.32f, 0.16f);
         static readonly Color LineColor = new(0.2f, 0.85f, 1f, 1f);
 
         const string AlignOnlyName = "AlignOnly";
@@ -31,10 +32,11 @@ namespace Forge.EditorTools
         const string AlignButtonName = "AlignButton";
         const string AlignerName = "TableAligner";
 
-        // Lock/Realign button on the operator (+Z) edge, tilted to face the operator.
-        // Assumes PokeButton's readable face is seen looking along its +Z (Unity UI convention).
-        static readonly Vector3 AlignButtonLocalPosition = new(0f, 0.02f, 0.11f);
-        static readonly Vector3 AlignButtonLocalEuler = new(45f, 180f, 0f);
+        // Lock/Realign button just outside the mat's left edge, facing the wearer (who aligns from the
+        // builder's -Z side), tilted like CueAnchor. Kept clear of the cue panel and Next/Reset buttons.
+        // PokeButton's readable face is seen looking along its +Z; the poke goes toward +Z.
+        static readonly Vector3 AlignButtonLocalPosition = new(-0.21f, 0.02f, 0f);
+        static readonly Vector3 AlignButtonLocalEuler = new(30f, 0f, 0f);
         static readonly Vector2 AlignButtonSize = new(0.07f, 0.035f);
 
         [ForgeSetupStep(300)]
@@ -112,21 +114,10 @@ namespace Forge.EditorTools
             box.center = new Vector3(0f, 0.01f, 0f);
             box.isTrigger = false;
 
-            var outline = ForgeSetupUtil.GetOrCreateChild(alignOnly.transform, OutlineName);
-            outline.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-            var line = ForgeSetupUtil.GetOrAdd<LineRenderer>(outline);
-            line.useWorldSpace = false;
-            line.loop = true;
-            line.widthMultiplier = 0.003f;
-            line.sharedMaterial = lineMat;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
-            float hx = MatFootprint.x * 0.5f, hz = MatFootprint.y * 0.5f, y = 0.001f;
-            line.positionCount = 4;
-            line.SetPositions(new[]
-            {
-                new Vector3(-hx, y, -hz), new Vector3(hx, y, -hz), new Vector3(hx, y, hz), new Vector3(-hx, y, hz),
-            });
+            // No outline here: chunk 2's MatFrame/MatFill/Arrow (StagingMatVisuals) is the single mat outline
+            // and already hides itself once TableAligner locks. Remove a stale one from earlier setup runs.
+            var staleOutline = alignOnly.transform.Find(OutlineName);
+            if (staleOutline != null) Object.DestroyImmediate(staleOutline.gameObject);
 
             // Grab: XRGrabInteractable on the mat itself, limited to the grab surface collider,
             // with only the planar transformer (horizontal slide + yaw, table height).
