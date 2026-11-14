@@ -22,7 +22,7 @@ public static class ForgeBuild
 {
     const string ScenePath = "Assets/Scenes/HelloWorld.unity";
     const string RigPrefabPath = "Assets/VRTemplateAssets/Prefabs/Setup/Complete XR Origin Set Up Hands Variant.prefab";
-    const string ApkPath = "Builds/ForgeXR.apk";
+    const string ApkPath = "Builds/ForgeXR-Capture.apk";
 
     // Builds a minimal scene: XR rig at the origin, teleportable floor, light,
     // and a "Hello World!" sign 1.5 m in front of the starting position.
@@ -102,8 +102,10 @@ public static class ForgeBuild
         // Quest requires 64-bit ARM, which requires IL2CPP.
         PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
-        PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.forge.forgexr");
-        PlayerSettings.productName = "ForgeXR";
+        PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.forge.forgexr.capture");
+        PlayerSettings.productName = "ForgeXR Capture";
+        PlayerSettings.Android.bundleVersionCode = 2;
+        PlayerSettings.bundleVersion = "1.1";
 
         Directory.CreateDirectory(Path.GetDirectoryName(ApkPath));
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions

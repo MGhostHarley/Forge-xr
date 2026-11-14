@@ -132,6 +132,24 @@ namespace Forge.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        [ForgeSetupStep(535)]
+        public static void CreateCaptureButton()
+        {
+            var rig = ForgeSetupUtil.GetOrCreateRoot(ForgeScene.RigRoot);
+            var stub = rig.GetComponentInChildren<DebugClassifierStub>();
+            if (stub == null) return;
+
+            var cue = GetCue();
+            var save = CreateButton(cue.transform, "SaveFrameButton", "Save frame", new Vector2(0.09f, 0.035f),
+                new Vector3(0f, -0.052f, 0f));
+            var stubSettings = new SerializedObject(stub);
+            stubSettings.FindProperty("saveButton").objectReferenceValue = save;
+            stubSettings.ApplyModifiedPropertiesWithoutUndo();
+            var cueSettings = new SerializedObject(cue);
+            cueSettings.FindProperty("saveButton").objectReferenceValue = save;
+            cueSettings.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         // TEMPORARY: delete with MilestoneSequence when Harley's walkthrough lands.
         [ForgeSetupStep(420)]
         public static void CreateMilestoneSequence()

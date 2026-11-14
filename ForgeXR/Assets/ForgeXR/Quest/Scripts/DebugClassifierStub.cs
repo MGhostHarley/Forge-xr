@@ -13,9 +13,8 @@ using UnityEngine;
 namespace Forge
 {
     /// <summary>
-    /// DEBUG ONLY, NOT RECOGNITION. Reports fixed fake detections (default: "torso" at the image centre) for every frame.
-    /// With <see cref="dumpFrames"/> on, it also saves the frame as a PNG (with a crosshair at each fake point) to
-    /// Application.persistentDataPath/forge_frames, so you can adb pull it and compare it with where the ring appeared.
+    /// Saves clean passthrough camera PNGs in a new folder on every launch.
+    /// The existing synthetic detections drive the debug highlights.
     /// </summary>
     [AddComponentMenu("Forge/DEBUG Classifier Stub (fake detections, not recognition)")]
     public class DebugClassifierStub : PieceClassifierBehaviour
@@ -34,12 +33,12 @@ namespace Forge
             new() { partId = PartIds.Torso, imagePoint = new Vector2(0.5f, 0.5f), confidence = 1f },
         };
 
-        [Header("Frame dump (debug)")]
-        [SerializeField] bool dumpFrames = false;
-        [SerializeField] float dumpIntervalSeconds = 5f;
-        [SerializeField] int maxDumps = 20;
+        [SerializeField] PokeButton saveButton;
 
-        float nextDump;
+        const float CaptureTimeoutSeconds = 2f;
+        readonly string captureSession = System.Guid.NewGuid().ToString("N");
+        float captureDeadline;
+        bool capturePending;
         int dumps;
         Texture2D dumpTexture;
         Color32[] dumpPixels;
@@ -48,6 +47,33 @@ namespace Forge
         {
             Debug.LogWarning("[Forge] DEBUG CLASSIFIER STUB ACTIVE: reporting FAKE detections " +
                              $"({fakeDetections.Length}) at fixed image points. This is not recognition.");
+        }
+
+        void OnEnable()
+        {
+            if (saveButton != null) saveButton.onPressed.AddListener(RequestCapture);
+        }
+
+        void OnDisable()
+        {
+            if (saveButton != null) saveButton.onPressed.RemoveListener(RequestCapture);
+            capturePending = false;
+        }
+
+        void RequestCapture()
+        {
+            if (capturePending) return;
+            capturePending = true;
+            captureDeadline = Time.unscaledTime + CaptureTimeoutSeconds;
+            saveButton.SetLabel("Saving…");
+        }
+
+        void Update()
+        {
+            if (!capturePending || Time.unscaledTime < captureDeadline) return;
+            capturePending = false;
+            saveButton.SetLabel("Retry save");
+            Debug.LogWarning("[Forge] Capture timed out waiting for a camera frame");
         }
 
         void OnDestroy()
@@ -61,10 +87,17 @@ namespace Forge
             foreach (var f in fakeDetections)
                 results.Add(new PieceDetection { partId = f.partId, imagePoint = f.imagePoint, confidence = f.confidence });
 
-            if (dumpFrames && dumps < maxDumps && Time.unscaledTime >= nextDump && frame?.pixels != null)
+            if (!capturePending || frame?.pixels == null || Time.unscaledTime >= captureDeadline) return;
+            capturePending = false;
+            try
             {
-                nextDump = Time.unscaledTime + dumpIntervalSeconds;
                 DumpFrame(frame);
+                saveButton.SetLabel($"Saved {dumps}");
+            }
+            catch (IOException error)
+            {
+                saveButton.SetLabel("Retry save");
+                Debug.LogError($"[Forge] Could not save capture: {error.Message}");
             }
         }
 
@@ -82,31 +115,14 @@ namespace Forge
             for (var y = 0; y < h; y++)
                 Array.Copy(frame.pixels, y * w, dumpPixels, (h - 1 - y) * w, w);
 
-            var red = new Color32(255, 0, 0, 255);
-            foreach (var f in fakeDetections)
-            {
-                var cx = Mathf.RoundToInt(f.imagePoint.x * (w - 1));
-                var cy = h - 1 - Mathf.RoundToInt(f.imagePoint.y * (h - 1));
-                for (var d = -6; d <= 6; d++)
-                {
-                    Plot(cx + d, cy, w, h, red);
-                    Plot(cx, cy + d, w, h, red);
-                }
-            }
-
             dumpTexture.SetPixels32(dumpPixels);
             dumpTexture.Apply(false);
-            var dir = Path.Combine(Application.persistentDataPath, "forge_frames");
+            var dir = Path.Combine(Application.persistentDataPath, "forge_frames", captureSession);
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, $"frame_{frame.frameId:D5}.png");
             File.WriteAllBytes(path, dumpTexture.EncodeToPNG());
             dumps++;
             Debug.Log($"[Forge] DEBUG stub dumped {path}");
-        }
-
-        void Plot(int x, int y, int w, int h, Color32 c)
-        {
-            if (x >= 0 && x < w && y >= 0 && y < h) dumpPixels[y * w + x] = c;
         }
     }
 }
