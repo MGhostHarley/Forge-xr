@@ -57,6 +57,6 @@ Reset the pieces to their marked pickup spots between runs. Test alignment as th
 
 [Forge XR](https://github.com/MGhostHarley/Forge-xr) (`MGhostHarley/Forge-xr`) is the default GitHub repository for this project. Its default branch is `main`. Use this repository for future Forge XR code and Unity asset changes unless the project owner directs otherwise. Phil (`pspannagel`) has Write access.
 
-Open `DriverPrototype/` in Unity Hub with Unity `6000.6.9f1`. The desktop scenes are `DriverDesktop` and `WheelDesktop` under `Assets/ForgeXR`. Both include cleaned reference photos and support Space or Next to advance, plus Reset after completion. Phil’s Quest project lives on `ps/unity-hello-world` under `ForgeXR/`.
+Open `AssemblyWalkthroughs/` in Unity Hub with Unity `6000.6.9f1`. The desktop scenes are `DriverDesktop` and `WheelDesktop` under `Assets/ForgeXR`. Both include cleaned reference photos and support Space or Next to advance, plus Reset after completion. Phil’s Quest project lives on `ps/unity-hello-world` under `ForgeXR/`.
 
 References: [Forge XR repository](https://github.com/MGhostHarley/Forge-xr) · [LEGO 40650 building instructions](https://www.lego.com/en-us/service/building-instructions/40650)
