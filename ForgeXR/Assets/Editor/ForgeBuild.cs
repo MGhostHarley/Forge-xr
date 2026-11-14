@@ -14,7 +14,10 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 // Command-line helpers for the Quest hello world.
 //   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.CreateHelloScene -quit
 //   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.BuildQuest -quit
-// Both are also available from the "Forge" menu in the editor.
+// Add -forgeSetup to BuildQuest to run Forge.EditorTools.ForgeQuestSetup.Run() (all [ForgeSetupStep]s) first,
+// which also makes ForgeQuest the only build scene:
+//   Unity -batchmode -projectPath ForgeXR -buildTarget Android -executeMethod ForgeBuild.BuildQuest -forgeSetup -quit
+// All are also available from the "Forge" menu in the editor.
 public static class ForgeBuild
 {
     const string ScenePath = "Assets/Scenes/HelloWorld.unity";
@@ -70,10 +73,30 @@ public static class ForgeBuild
         Debug.Log("[ForgeBuild] Created " + ScenePath + " and set it as the only build scene");
     }
 
+    [MenuItem("Forge/Setup + Build Quest APK")]
+    public static void SetupAndBuildQuest()
+    {
+        if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            return;
+        Build(runSetup: true);
+    }
+
     [MenuItem("Forge/Build Quest APK")]
     public static void BuildQuest()
     {
+        Build(runSetup: System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-forgeSetup") >= 0);
+    }
+
+    static void Build(bool runSetup)
+    {
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
+
+        if (runSetup)
+        {
+            // Runs before the scene list below is read, so the build picks up ForgeQuest.
+            Debug.Log("[ForgeBuild] Running Forge setup before build");
+            Forge.EditorTools.ForgeQuestSetup.Run();
+        }
         EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
 
         // Quest requires 64-bit ARM, which requires IL2CPP.
