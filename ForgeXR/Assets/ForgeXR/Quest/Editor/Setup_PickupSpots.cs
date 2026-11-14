@@ -41,6 +41,9 @@ namespace Forge.EditorTools
             { PartIds.Torso, "Torso" },
             { PartIds.Head, "Head" },
             { PartIds.Hair, "Hairpiece" },
+            { PartIds.Tire, "Tire" },
+            { PartIds.Rim, "Rim" },
+            { PartIds.AxlePin, "Axle pin" },
         };
 
         [ForgeSetupStep(200)]
@@ -87,7 +90,7 @@ namespace Forge.EditorTools
             if (font == null) font = TMP_Settings.defaultFontAsset;
             var fontMat = AssetDatabase.LoadAssetAtPath<Material>(FontOutlineMatPath);
 
-            var ids = PartIds.DriverStaging;
+            var ids = PartIds.All; // driver + wheel; spots stay hidden until the camera detects their part
             for (var i = 0; i < ids.Length; i++)
             {
                 var id = ids[i];

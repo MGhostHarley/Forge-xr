@@ -12,8 +12,20 @@ namespace Forge
         public const string Head = "head";
         public const string Hair = "hairpiece";
 
+        // Wheel walkthrough (Harley's WheelWalkthrough). The classifier must report these same ids.
+        public const string Tire = "tire";
+        public const string Rim = "rim";
+        /// <summary>The yellow axle pin on the left of the chassis (the wheel's target).</summary>
+        public const string AxlePin = "axle-pin";
+
         /// <summary>Staging order, builder's left to right.</summary>
         public static readonly string[] DriverStaging = { Legs, Torso, Head, Hair };
+
+        /// <summary>Wheel parts: tire on the left, rim on the right, axle pin on the chassis.</summary>
+        public static readonly string[] WheelStaging = { Tire, Rim, AxlePin };
+
+        /// <summary>Every part that gets a PickupSpot.</summary>
+        public static readonly string[] All = { Legs, Torso, Head, Hair, Tire, Rim, AxlePin };
     }
 
     /// <summary>

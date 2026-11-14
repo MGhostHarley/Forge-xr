@@ -39,7 +39,7 @@ namespace Forge
         }
 
         [SerializeField] Mode mode = Mode.TouchToPlace;
-        [Tooltip("TouchToPlace: part id of the fake piece placed by touching the table.")]
+        [Tooltip("TouchToPlace: part placed when nothing is highlighted (otherwise the next highlighted part).")]
         [SerializeField] string touchPartId = PartIds.Torso;
         [Tooltip("TouchToPlace: fingertip counts as touching when within this height above the table (m).")]
         [SerializeField] float touchHeight = 0.02f;
@@ -53,9 +53,10 @@ namespace Forge
 
         CameraFrameSource frameSource;
         TableSurface table;
-        bool hasAnchor;
-        Vector3 anchor;
+        // One fake piece per part id, placed by fingertip touches (pieces stay where they were "put").
+        readonly Dictionary<string, Vector3> anchors = new();
         float touchSince = -1f;
+        bool placedThisTouch;
         Vector3 touchPoint;
 
         void Update()
@@ -77,18 +78,34 @@ namespace Forge
                 }
                 break;
             }
-            if (!touching) { touchSince = -1f; return; }
+            if (!touching) { touchSince = -1f; placedThisTouch = false; return; }
 
-            if (Time.unscaledTime - touchSince >= touchHoldSeconds)
+            if (!placedThisTouch && Time.unscaledTime - touchSince >= touchHoldSeconds)
             {
+                placedThisTouch = true; // one placement per touch; lift the finger to place the next part
                 var p = new Vector3(touchPoint.x, tableY, touchPoint.z);
-                if (!hasAnchor || (p - anchor).sqrMagnitude > 0.01f * 0.01f)
-                {
-                    anchor = p;
-                    hasAnchor = true;
-                    Debug.Log($"[Forge] DEBUG stub: fake '{touchPartId}' placed at {anchor:F3} by fingertip touch");
-                }
+                var id = ChoosePartForTouch(p);
+                anchors[id] = p;
+                Debug.Log($"[Forge] DEBUG stub: fake '{id}' placed at {p:F3} by fingertip touch");
             }
+        }
+
+        /// <summary>
+        /// The next currently highlighted part without a fake position yet; once all highlighted parts
+        /// have one, the nearest highlighted part moves. With nothing highlighted, <see cref="touchPartId"/>.
+        /// So step 1 of the driver: first touch = legs, second = torso; step 2: head; wheel: tire, rim, axle pin.
+        /// </summary>
+        string ChoosePartForTouch(Vector3 p)
+        {
+            string nearest = null;
+            var best = float.PositiveInfinity;
+            foreach (var id in HighlightRegistry.ActiveIds)
+            {
+                if (!anchors.TryGetValue(id, out var a)) return id;
+                var d = (a - p).sqrMagnitude;
+                if (d < best) { best = d; nearest = id; }
+            }
+            return nearest ?? touchPartId;
         }
 
         /// <summary>World point -> normalised image point using the frame's capture geometry (inverse of ImagePointToRay).</summary>
@@ -130,9 +147,10 @@ namespace Forge
             if (mode == Mode.TouchToPlace)
             {
                 if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
-                if (hasAnchor && frameSource != null && frameSource.HasCapture &&
-                    TryProject(frameSource.LatestCapture, anchor, out var ip))
-                    results.Add(new PieceDetection { partId = touchPartId, imagePoint = ip, confidence = 1f });
+                if (frameSource != null && frameSource.HasCapture)
+                    foreach (var kv in anchors)
+                        if (TryProject(frameSource.LatestCapture, kv.Value, out var ip))
+                            results.Add(new PieceDetection { partId = kv.Key, imagePoint = ip, confidence = 1f });
             }
             else
             {
