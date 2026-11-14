@@ -7,8 +7,9 @@ namespace Forge
     /// <summary>
     /// Finds where a camera ray meets the real table. No manual alignment:
     ///   1. A Space Setup horizontal plane (ARPlaneManager planes on the TablePlane layer, MeshCollider) hit by the ray.
-    ///   2. Otherwise the last plane height seen, else the lowest stable fingertip height (the builder touches the
-    ///      table while picking up pieces), else a seed of head height minus <see cref="seedBelowHead"/>.
+    ///   2. Otherwise the last plane height seen, else the most common resting fingertip height seen by the camera
+    ///      in front of the wearer (the builder rests fingers on the table while handling pieces; a hand in the lap
+    ///      is below and out of view, so it does not count), else a seed of head height minus <see cref="seedBelowHead"/>.
     /// Floor-like planes (too far below the head or too close to the XR Origin floor) are ignored.
     /// The ray is intersected <see cref="pieceHalfHeight"/> above the table so the ring lands under the piece's centre.
     /// </summary>
@@ -37,9 +38,13 @@ namespace Forge
         [Tooltip("Fingertips must be at least this far below the head (m).")]
         [SerializeField] float minBelowHead = 0.25f;
         [SerializeField] int minFingertipSamples = 10;
-        [SerializeField] float fingertipWindowSeconds = 60f;
-        [Range(0f, 0.5f)]
-        [SerializeField] float fingertipPercentile = 0.05f;
+        [SerializeField] float fingertipWindowSeconds = 90f;
+        [Tooltip("Resting fingertips must be at least this far in front of the head, horizontally (m).")]
+        [SerializeField] float minForwardOfHead = 0.15f;
+        [Tooltip("Height band width for finding the most common resting height (m).")]
+        [SerializeField] float binSize = 0.015f;
+        [Tooltip("A different height band must have this many times the samples of the current one to take over.")]
+        [SerializeField] float switchRatio = 1.5f;
 
         public Source LastSource { get; private set; } = Source.None;
         /// <summary>Best current table height (world y), whatever the source.</summary>
@@ -55,6 +60,8 @@ namespace Forge
         float lastTipTime;
         int lastTipCount;
         Camera cam;
+        CameraFrameSource frameSource;
+        readonly Dictionary<int, int> binCounts = new();
 
         void Awake()
         {
@@ -150,7 +157,7 @@ namespace Forge
                 {
                     var speed = Vector3.Distance(tips[i], lastTip[i]) / dt;
                     var y = tips[i].y;
-                    if (speed < stableSpeed && PlausibleTableY(y, head.position.y))
+                    if (speed < stableSpeed && PlausibleTableY(y, head.position.y) && InFrontAndInView(tips[i], head))
                         samples.Add((now, y - fingertipRadius));
                 }
             }
@@ -164,15 +171,54 @@ namespace Forge
             if (drop > 0) samples.RemoveRange(0, drop);
         }
 
+        /// <summary>A table touch happens in front of the wearer, where the camera looks; a lap rest does not.</summary>
+        bool InFrontAndInView(Vector3 tip, Transform head)
+        {
+            var fwd = head.forward; fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-4f) return false;
+            var toTip = tip - head.position; toTip.y = 0f;
+            if (Vector3.Dot(toTip, fwd.normalized) < minForwardOfHead) return false;
+            if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
+            return frameSource == null || !frameSource.HasCapture || frameSource.LatestCapture.IsInView(tip, 0.02f);
+        }
+
         void UpdateFingertipEstimate()
         {
             if (samples.Count < minFingertipSamples) return;
+
+            // Most common resting height (1.5 cm bands, neighbours included), not the lowest: one dip can't win.
+            binCounts.Clear();
+            foreach (var s in samples)
+            {
+                var b = Mathf.FloorToInt(s.y / binSize);
+                binCounts[b] = binCounts.TryGetValue(b, out var c) ? c + 1 : 1;
+            }
+            int Score(int b) => (binCounts.TryGetValue(b - 1, out var l) ? l : 0) + (binCounts.TryGetValue(b, out var m) ? m : 0) +
+                                (binCounts.TryGetValue(b + 1, out var r) ? r : 0);
+            int best = 0, bestScore = -1;
+            foreach (var b in binCounts.Keys)
+            {
+                var sc = Score(b);
+                if (sc > bestScore || (sc == bestScore && b > best)) { best = b; bestScore = sc; }
+            }
+            if (bestScore < minFingertipSamples) return;
+
+            // Hysteresis: keep the current band unless another clearly dominates.
+            if (fingertipY.HasValue)
+            {
+                var cur = Mathf.FloorToInt(fingertipY.Value / binSize);
+                if (Mathf.Abs(best - cur) > 1 && bestScore < switchRatio * Score(cur)) best = cur;
+            }
+
+            // Median of the samples in the winning band and its neighbours.
             sortBuffer.Clear();
-            foreach (var s in samples) sortBuffer.Add(s.y);
+            foreach (var s in samples)
+                if (Mathf.Abs(Mathf.FloorToInt(s.y / binSize) - best) <= 1) sortBuffer.Add(s.y);
+            if (sortBuffer.Count == 0) return;
             sortBuffer.Sort();
-            var y = sortBuffer[Mathf.Clamp(Mathf.FloorToInt(fingertipPercentile * sortBuffer.Count), 0, sortBuffer.Count - 1)];
+            var y = sortBuffer[sortBuffer.Count / 2];
             if (!fingertipY.HasValue || Mathf.Abs(fingertipY.Value - y) > 0.01f)
-                Debug.Log($"[Forge] Table height from fingertips: {y:F3} ({sortBuffer.Count} samples)");
+                Debug.Log($"[Forge] Table height from fingertips: {y:F3} ({sortBuffer.Count}/{samples.Count} resting samples in view)");
             fingertipY = y;
         }
     }
