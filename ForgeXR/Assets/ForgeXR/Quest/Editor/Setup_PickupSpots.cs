@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using TMPro;
-using Unity.XR.CoreUtils;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -9,8 +8,9 @@ using UnityEngine.Rendering;
 namespace Forge.EditorTools
 {
     /// <summary>
-    /// Chunk 2 setup (orders 200-299): generated materials/meshes, StagingMat start pose,
-    /// mat outline + arrow, four PickupSpots with labels, and the checkpoint default highlight.
+    /// Chunk 2 setup (orders 200-299): generated materials/meshes, the StagingMat container (identity pose, no visuals:
+    /// spots are placed in world space by PieceTracker from camera detections), four PickupSpots with labels,
+    /// and the checkpoint default highlight.
     /// Idempotent: assets are load-or-create and updated in place; scene objects are find-or-create by name.
     /// Materials are .mat assets referenced by the scene, so the URP Unlit shader and its transparent
     /// variant survive Android/IL2CPP builds (no runtime Shader.Find).
@@ -19,13 +19,9 @@ namespace Forge.EditorTools
     {
         const string GenFolder = "Assets/ForgeXR/Quest/Generated";
         const string SpotMatPath = GenFolder + "/ForgeSpot.mat";
-        const string MatMatPath = GenFolder + "/ForgeMat.mat";
         const string RingMeshPath = GenFolder + "/ForgeRing.asset";
         const string DiscMeshPath = GenFolder + "/ForgeDisc.asset";
         const string StemMeshPath = GenFolder + "/ForgeStem.asset";
-        const string FrameMeshPath = GenFolder + "/ForgeMatFrame.asset";
-        const string FillMeshPath = GenFolder + "/ForgeMatFill.asset";
-        const string ArrowMeshPath = GenFolder + "/ForgeArrow.asset";
 
         const string FontPath = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
         const string FontOutlineMatPath = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF - Outline.mat";
@@ -38,8 +34,6 @@ namespace Forge.EditorTools
         const float LabelLow = 0.08f, LabelHigh = 0.105f; // staggered by index parity to avoid overlap
         const float LabelHalfHeight = 0.012f;              // stem stops just below the text
         const float LabelFontSize = 0.15f;                 // TMP 3D: ~1.5 cm em
-        const float MatWidth = 0.32f, MatDepth = 0.16f, FrameLine = 0.003f;
-        const float ArrowTipZ = -0.072f, ArrowBaseZ = -0.052f, ArrowHalfWidth = 0.015f;
 
         static readonly Dictionary<string, string> Labels = new()
         {
@@ -55,56 +49,33 @@ namespace Forge.EditorTools
             EnsureFolder(GenFolder);
 
             GetOrCreateTransparentMaterial(SpotMatPath, new Color(1f, 1f, 1f, 0.6f), (int)RenderQueue.Transparent + 10);
-            GetOrCreateTransparentMaterial(MatMatPath, new Color(1f, 1f, 1f, 0.3f), (int)RenderQueue.Transparent - 10);
 
             GetOrCreateMesh(RingMeshPath, m => BuildRing(m, RingInner, RingOuter, RingSegments));
             GetOrCreateMesh(DiscMeshPath, m => BuildRing(m, 0f, RingInner, RingSegments));
             GetOrCreateMesh(StemMeshPath, m => BuildBox(m, StemWidth, 1f, StemWidth));
-            GetOrCreateMesh(FrameMeshPath, m => BuildFrame(m, MatWidth, MatDepth, FrameLine));
-            GetOrCreateMesh(FillMeshPath, m => BuildFrame(m, MatWidth, MatDepth, 0f));
-            GetOrCreateMesh(ArrowMeshPath, BuildArrow);
 
             AssetDatabase.SaveAssets();
         }
 
+        /// <summary>
+        /// StagingMat is now only a container: identity world pose so a spot's local position is its world position.
+        /// Removes the retired mat visuals (MatFill/MatFrame/Arrow) and the deleted MatStartPlacer/StagingMatVisuals.
+        /// </summary>
         [ForgeSetupStep(210)]
         public static void PlaceStagingMat()
         {
             var mat = ForgeSetupUtil.GetOrCreateStagingMat();
-
-            // Fixed start pose relative to the XR Origin (which sits off-centre and yawed in SampleScene).
-            // The origin is floor level (runtime default Stage space), so y = 0.75 m is table height.
-            // MatStartPlacer re-places it in front of the head at runtime; chunk 3 then aligns it.
-            var origin = UnityEngine.Object.FindAnyObjectByType<XROrigin>(FindObjectsInactive.Include);
-            var originT = origin != null ? (origin.Origin != null ? origin.Origin.transform : origin.transform) : null;
-            if (originT != null)
-            {
-                var fwd = Vector3.ProjectOnPlane(originT.forward, Vector3.up);
-                if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward;
-                fwd.Normalize();
-                var pos = originT.position + fwd * 0.5f + Vector3.up * 0.75f;
-                mat.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(fwd, Vector3.up));
-            }
-            else
-            {
-                Debug.LogWarning("[ForgeSetup] No XROrigin found; placing StagingMat at world (0, 0.75, 0.5)");
-                mat.transform.SetPositionAndRotation(new Vector3(0f, 0.75f, 0.5f), Quaternion.identity);
-            }
+            mat.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             mat.transform.localScale = Vector3.one;
+            if (mat.transform.parent != null && mat.transform.parent.position != Vector3.zero)
+                Debug.LogWarning("[ForgeSetup] ForgeRig is not at the origin; spots are placed in world space regardless.");
 
-            var matMaterial = AssetDatabase.LoadAssetAtPath<Material>(MatMatPath);
-            var fill = MeshChild(mat.transform, "MatFill", FillMeshPath, matMaterial, new Vector3(0f, 0f, 0f));
-            var frame = MeshChild(mat.transform, "MatFrame", FrameMeshPath, matMaterial, new Vector3(0f, 0.0005f, 0f));
-            var arrow = MeshChild(mat.transform, "Arrow", ArrowMeshPath, matMaterial, new Vector3(0f, 0.0005f, 0f));
-
-            ForgeSetupUtil.GetOrAdd<MatStartPlacer>(mat);
-
-            var visuals = ForgeSetupUtil.GetOrAdd<StagingMatVisuals>(mat);
-            var so = new SerializedObject(visuals);
-            so.FindProperty("frame").objectReferenceValue = frame;
-            so.FindProperty("fill").objectReferenceValue = fill;
-            so.FindProperty("arrow").objectReferenceValue = arrow;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            foreach (var name in new[] { "MatFill", "MatFrame", "Arrow" })
+            {
+                var c = mat.transform.Find(name);
+                if (c != null) UnityEngine.Object.DestroyImmediate(c.gameObject);
+            }
+            GameObjectUtility.RemoveMonoBehavioursWithMissingScript(mat);
         }
 
         [ForgeSetupStep(220)]
@@ -285,48 +256,6 @@ namespace Forge.EditorTools
                 3, 7, 4, 3, 4, 0, // -X
                 4, 7, 6, 4, 6, 5, // top
             };
-            Finish(m, verts, tris);
-        }
-
-        /// <summary>Rectangle outline of the given line width; line = 0 gives a filled rectangle.</summary>
-        static void BuildFrame(Mesh m, float width, float depth, float line)
-        {
-            float x = width * 0.5f, z = depth * 0.5f;
-            if (line <= 0f)
-            {
-                Finish(m, new List<Vector3> { new(-x, 0, -z), new(-x, 0, z), new(x, 0, z), new(x, 0, -z) },
-                    new List<int> { 0, 1, 2, 0, 2, 3 });
-                return;
-            }
-            float ix = x - line, iz = z - line;
-            var verts = new List<Vector3>
-            {
-                new(-x, 0, -z), new(-x, 0, z), new(x, 0, z), new(x, 0, -z),       // outer 0-3
-                new(-ix, 0, -iz), new(-ix, 0, iz), new(ix, 0, iz), new(ix, 0, -iz), // inner 4-7
-            };
-            var tris = new List<int>();
-            for (var i = 0; i < 4; i++)
-            {
-                int o0 = i, o1 = (i + 1) % 4, i0 = i + 4, i1 = (i + 1) % 4 + 4;
-                tris.AddRange(new[] { o0, o1, i1, o0, i1, i0 });
-            }
-            Finish(m, verts, tris);
-        }
-
-        /// <summary>Chevron near the mat's -Z edge pointing -Z, toward the builder.</summary>
-        static void BuildArrow(Mesh m)
-        {
-            const float thickness = 0.006f;
-            var verts = new List<Vector3>
-            {
-                new(0, 0, ArrowTipZ),                               // 0 tip (outer)
-                new(-ArrowHalfWidth, 0, ArrowBaseZ),                // 1 left outer
-                new(-ArrowHalfWidth, 0, ArrowBaseZ + thickness),    // 2 left inner
-                new(0, 0, ArrowTipZ + thickness * 1.4f),            // 3 tip (inner)
-                new(ArrowHalfWidth, 0, ArrowBaseZ + thickness),     // 4 right inner
-                new(ArrowHalfWidth, 0, ArrowBaseZ),                 // 5 right outer
-            };
-            var tris = new List<int> { 0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5 };
             Finish(m, verts, tris);
         }
 
