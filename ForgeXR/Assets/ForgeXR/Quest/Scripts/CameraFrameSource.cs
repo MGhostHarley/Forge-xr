@@ -25,6 +25,27 @@ namespace Forge
             var d = new Vector3((u - principalPoint.x) / focalLength.x, -(v - principalPoint.y) / focalLength.y, 1f);
             return new Ray(cameraPose.position, cameraPose.rotation * d.normalized);
         }
+
+        /// <summary>World point -> normalised image point (inverse of ImagePointToRay). False if behind the camera.
+        /// The result may lie outside 0..1 when the point is out of frame.</summary>
+        public bool TryWorldToImage(Vector3 world, out Vector2 normalized)
+        {
+            normalized = default;
+            if (intrinsicsResolution.x <= 0 || intrinsicsResolution.y <= 0) return false;
+            var c = Quaternion.Inverse(cameraPose.rotation) * (world - cameraPose.position);
+            if (c.z <= 0.01f) return false;
+            var u = focalLength.x * (c.x / c.z) + principalPoint.x;
+            var v = principalPoint.y - focalLength.y * (c.y / c.z);
+            normalized = new Vector2(u / intrinsicsResolution.x, v / intrinsicsResolution.y);
+            return true;
+        }
+
+        /// <summary>True if the world point is in front of the camera and inside the frame (with a margin, 0..0.5).</summary>
+        public bool IsInView(Vector3 world, float margin = 0.08f)
+        {
+            return TryWorldToImage(world, out var n) &&
+                   n.x >= margin && n.x <= 1f - margin && n.y >= margin && n.y <= 1f - margin;
+        }
     }
 
     /// <summary>

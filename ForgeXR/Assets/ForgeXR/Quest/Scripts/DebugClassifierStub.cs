@@ -45,6 +45,8 @@ namespace Forge
         [SerializeField] float touchHeight = 0.02f;
         [Tooltip("TouchToPlace: fingertip must stay touching this long (s) before the fake piece moves.")]
         [SerializeField] float touchHoldSeconds = 0.4f;
+        [Tooltip("TouchToPlace: placed parts are locked; holding a fingertip on the table this long (s) moves the nearest highlighted one.")]
+        [SerializeField] float moveHoldSeconds = 2f;
 
         [SerializeField] FakeDetection[] fakeDetections =
         {
@@ -56,6 +58,7 @@ namespace Forge
         // One fake piece per part id, placed by fingertip touches (pieces stay where they were "put").
         readonly Dictionary<string, Vector3> anchors = new();
         float touchSince = -1f;
+        float nextProjLog;
         bool placedThisTouch;
         Vector3 touchPoint;
 
@@ -80,45 +83,50 @@ namespace Forge
             }
             if (!touching) { touchSince = -1f; placedThisTouch = false; return; }
 
-            if (!placedThisTouch && Time.unscaledTime - touchSince >= touchHoldSeconds)
+            if (placedThisTouch) return; // one action per touch; lift the finger for the next one
+            var held = Time.unscaledTime - touchSince;
+            if (held < touchHoldSeconds) return;
+            var p = new Vector3(touchPoint.x, tableY, touchPoint.z);
+
+            // Short touch: place the next highlighted part that has no position yet. Placed parts stay locked.
+            var unplaced = NextUnplacedHighlighted();
+            if (unplaced != null)
             {
-                placedThisTouch = true; // one placement per touch; lift the finger to place the next part
-                var p = new Vector3(touchPoint.x, tableY, touchPoint.z);
-                var id = ChoosePartForTouch(p);
-                anchors[id] = p;
-                Debug.Log($"[Forge] DEBUG stub: fake '{id}' placed at {p:F3} by fingertip touch");
+                placedThisTouch = true;
+                anchors[unplaced] = p;
+                Debug.Log($"[Forge] DEBUG stub: fake '{unplaced}' placed (locked) at {p:F3}");
+                return;
             }
+
+            // Everything highlighted is placed: only a long, deliberate press moves the nearest one.
+            if (held < moveHoldSeconds) return;
+            placedThisTouch = true;
+            var id = NearestHighlighted(p) ?? touchPartId;
+            anchors[id] = p;
+            Debug.Log($"[Forge] DEBUG stub: fake '{id}' moved (long press) to {p:F3}");
         }
 
-        /// <summary>
-        /// The next currently highlighted part without a fake position yet; once all highlighted parts
-        /// have one, the nearest highlighted part moves. With nothing highlighted, <see cref="touchPartId"/>.
-        /// So step 1 of the driver: first touch = legs, second = torso; step 2: head; wheel: tire, rim, axle pin.
-        /// </summary>
-        string ChoosePartForTouch(Vector3 p)
+        string NextUnplacedHighlighted()
+        {
+            foreach (var id in HighlightRegistry.ActiveIds)
+                if (!anchors.ContainsKey(id)) return id;
+            return HighlightRegistry.ActiveIds.Count == 0 && !anchors.ContainsKey(touchPartId) ? touchPartId : null;
+        }
+
+        string NearestHighlighted(Vector3 p)
         {
             string nearest = null;
             var best = float.PositiveInfinity;
             foreach (var id in HighlightRegistry.ActiveIds)
             {
-                if (!anchors.TryGetValue(id, out var a)) return id;
+                if (!anchors.TryGetValue(id, out var a)) continue;
                 var d = (a - p).sqrMagnitude;
                 if (d < best) { best = d; nearest = id; }
             }
-            return nearest ?? touchPartId;
+            return nearest;
         }
 
-        /// <summary>World point -> normalised image point using the frame's capture geometry (inverse of ImagePointToRay).</summary>
-        static bool TryProject(in CaptureInfo info, Vector3 world, out Vector2 normalized)
-        {
-            normalized = default;
-            var c = Quaternion.Inverse(info.cameraPose.rotation) * (world - info.cameraPose.position);
-            if (c.z <= 0.01f) return false;
-            var u = info.focalLength.x * (c.x / c.z) + info.principalPoint.x;
-            var v = info.principalPoint.y - info.focalLength.y * (c.y / c.z);
-            normalized = new Vector2(u / info.intrinsicsResolution.x, v / info.intrinsicsResolution.y);
-            return normalized.x >= 0f && normalized.x <= 1f && normalized.y >= 0f && normalized.y <= 1f;
-        }
+
 
         [Header("Frame dump (debug)")]
         [SerializeField] bool dumpFrames = false;
@@ -147,10 +155,30 @@ namespace Forge
             if (mode == Mode.TouchToPlace)
             {
                 if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
-                if (frameSource != null && frameSource.HasCapture)
+                var log = anchors.Count > 0 && Time.unscaledTime >= nextProjLog;
+                if (log) nextProjLog = Time.unscaledTime + 2f;
+                if (frameSource == null || !frameSource.HasCapture)
+                {
+                    if (log) Debug.Log($"[Forge] DEBUG stub proj: no capture (frameSource={(frameSource != null)})");
+                }
+                else
+                {
+                    var info = frameSource.LatestCapture;
                     foreach (var kv in anchors)
-                        if (TryProject(frameSource.LatestCapture, kv.Value, out var ip))
-                            results.Add(new PieceDetection { partId = kv.Key, imagePoint = ip, confidence = 1f });
+                    {
+                        // Report even out-of-frame pieces (only skip behind the camera): the locator's ray through the
+                        // extrapolated image point still hits the same table point, so testing does not depend on head angle.
+                        var ok = info.TryWorldToImage(kv.Value, out var ip);
+                        if (ok) results.Add(new PieceDetection { partId = kv.Key, imagePoint = ip, confidence = 1f });
+                        if (log)
+                        {
+                            var c = Quaternion.Inverse(info.cameraPose.rotation) * (kv.Value - info.cameraPose.position);
+                            Debug.Log($"[Forge] DEBUG stub proj {kv.Key}: anchor={kv.Value:F3} cam={info.cameraPose.position:F3} " +
+                                      $"fwd={(info.cameraPose.rotation * Vector3.forward):F2} c={c:F3} uv={ip:F2} ok={ok} " +
+                                      $"f={info.focalLength:F0} pp={info.principalPoint:F0} res={info.intrinsicsResolution}");
+                        }
+                    }
+                }
             }
             else
             {

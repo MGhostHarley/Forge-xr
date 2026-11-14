@@ -29,6 +29,10 @@ namespace Forge
         [SerializeField] float handNearDistance = 0.10f;
         [Tooltip("Show detected but not highlighted pieces (dim ring). Off = only the highlighted piece is shown.")]
         [SerializeField] bool showIdleSpots = true;
+        [Tooltip("A detection gap shorter than this (s) never counts as missed (frames arrive at ~5 Hz).")]
+        [SerializeField] float missedGraceSeconds = 0.4f;
+
+        CameraFrameSource frameSource;
 
         class Track
         {
@@ -36,6 +40,8 @@ namespace Forge
             public bool everSeen, visible;
             public Vector3 target;
             public float lastSeen = float.NegativeInfinity;
+            /// <summary>Seconds the spot has been inside the camera view without a detection.</summary>
+            public float missedInView;
             public Vector3 pending;
             public int pendingCount;
             public bool snapNext = true;
@@ -93,7 +99,7 @@ namespace Forge
             }
 
             var now = Time.unscaledTime;
-            var lost = !t.everSeen || now - t.lastSeen > CurrentHold(t);
+            var lost = !t.everSeen || t.missedInView > CurrentHold(t);
             if (lost)
             {
                 t.target = tablePoint;
@@ -116,6 +122,7 @@ namespace Forge
 
             t.everSeen = true;
             t.lastSeen = now;
+            t.missedInView = 0f;
         }
 
         float CurrentHold(Track t)
@@ -131,10 +138,18 @@ namespace Forge
             var now = Time.unscaledTime;
             var k = smoothingTime > 1e-3f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / smoothingTime) : 1f;
 
+            if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
+            var haveCapture = frameSource != null && frameSource.HasCapture;
+
             foreach (var t in tracks.Values)
             {
                 if (t.spot == null) continue;
-                var tracked = t.everSeen && now - t.lastSeen <= CurrentHold(t);
+                // A piece that is simply out of the camera's view (the camera follows the head, not the eyes) is
+                // held where it was last seen; only time spent in view without a detection counts toward losing it.
+                if (t.everSeen && now - t.lastSeen > missedGraceSeconds &&
+                    (!haveCapture || frameSource.LatestCapture.IsInView(t.target)))
+                    t.missedInView += Time.unscaledDeltaTime;
+                var tracked = t.everSeen && t.missedInView <= CurrentHold(t);
                 if (tracked)
                 {
                     var tr = t.spot.transform;
