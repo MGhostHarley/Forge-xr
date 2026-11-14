@@ -10,7 +10,7 @@ namespace Forge
         public const string Legs = "legs";
         public const string Torso = "torso";
         public const string Head = "head";
-        public const string Hair = "hair";
+        public const string Hair = "hairpiece";
 
         /// <summary>Staging order, builder's left to right.</summary>
         public static readonly string[] DriverStaging = { Legs, Torso, Head, Hair };
