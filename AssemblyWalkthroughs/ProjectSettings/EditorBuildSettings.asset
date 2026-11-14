@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/ForgeXR/ForgeDemo.unity
+    guid: 9829bf57ef1949a881b00d51accca6f6
+  - enabled: 1
     path: Assets/ForgeXR/DriverWalkthrough/DriverDesktop.unity
     guid: 5b039f99c01ac422bbef97deaf5b3b9c
   m_configObjects: {}
