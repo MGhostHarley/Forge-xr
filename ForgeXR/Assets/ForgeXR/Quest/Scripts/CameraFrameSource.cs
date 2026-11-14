@@ -198,8 +198,14 @@ namespace Forge
             frame.frameId = nextFrameId++;
         }
 
+        /// <summary>Camera geometry of the frame currently being delivered (valid during FrameReady/Classify).</summary>
+        public CaptureInfo LatestCapture { get; private set; }
+        public bool HasCapture { get; private set; }
+
         void Deliver(CaptureInfo info)
         {
+            LatestCapture = info;
+            HasCapture = true;
             FramesDelivered++;
             Status = $"ok ({FramesDelivered} frames, age {info.imageAgeSeconds * 1000:F0} ms)";
             try { FrameReady?.Invoke(frame, info); }

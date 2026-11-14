@@ -29,10 +29,79 @@ namespace Forge
             [Range(0f, 1f)] public float confidence;
         }
 
+        public enum Mode
+        {
+            /// <summary>Fake detections at fixed image points (they follow the wearer's gaze).</summary>
+            FixedImagePoints,
+            /// <summary>Touch the table with an index fingertip: a fake piece stays at that table point
+            /// (projected into each frame), so the highlight and cue stay put. Touch again to move it.</summary>
+            TouchToPlace,
+        }
+
+        [SerializeField] Mode mode = Mode.TouchToPlace;
+        [Tooltip("TouchToPlace: part id of the fake piece placed by touching the table.")]
+        [SerializeField] string touchPartId = PartIds.Torso;
+        [Tooltip("TouchToPlace: fingertip counts as touching when within this height above the table (m).")]
+        [SerializeField] float touchHeight = 0.02f;
+        [Tooltip("TouchToPlace: fingertip must stay touching this long (s) before the fake piece moves.")]
+        [SerializeField] float touchHoldSeconds = 0.4f;
+
         [SerializeField] FakeDetection[] fakeDetections =
         {
             new() { partId = PartIds.Torso, imagePoint = new Vector2(0.5f, 0.5f), confidence = 1f },
         };
+
+        CameraFrameSource frameSource;
+        TableSurface table;
+        bool hasAnchor;
+        Vector3 anchor;
+        float touchSince = -1f;
+        Vector3 touchPoint;
+
+        void Update()
+        {
+            if (mode != Mode.TouchToPlace) return;
+            if (table == null) table = FindAnyObjectByType<TableSurface>();
+            if (table == null) return;
+            var tableY = table.TableHeight;
+
+            var touching = false;
+            foreach (var tip in ForgeHands.IndexTipPositions)
+            {
+                if (tip.y - tableY > touchHeight) continue;
+                touching = true;
+                if (touchSince < 0f || (tip - touchPoint).sqrMagnitude > 0.03f * 0.03f)
+                {
+                    touchSince = Time.unscaledTime;
+                    touchPoint = tip;
+                }
+                break;
+            }
+            if (!touching) { touchSince = -1f; return; }
+
+            if (Time.unscaledTime - touchSince >= touchHoldSeconds)
+            {
+                var p = new Vector3(touchPoint.x, tableY, touchPoint.z);
+                if (!hasAnchor || (p - anchor).sqrMagnitude > 0.01f * 0.01f)
+                {
+                    anchor = p;
+                    hasAnchor = true;
+                    Debug.Log($"[Forge] DEBUG stub: fake '{touchPartId}' placed at {anchor:F3} by fingertip touch");
+                }
+            }
+        }
+
+        /// <summary>World point -> normalised image point using the frame's capture geometry (inverse of ImagePointToRay).</summary>
+        static bool TryProject(in CaptureInfo info, Vector3 world, out Vector2 normalized)
+        {
+            normalized = default;
+            var c = Quaternion.Inverse(info.cameraPose.rotation) * (world - info.cameraPose.position);
+            if (c.z <= 0.01f) return false;
+            var u = info.focalLength.x * (c.x / c.z) + info.principalPoint.x;
+            var v = info.principalPoint.y - info.focalLength.y * (c.y / c.z);
+            normalized = new Vector2(u / info.intrinsicsResolution.x, v / info.intrinsicsResolution.y);
+            return normalized.x >= 0f && normalized.x <= 1f && normalized.y >= 0f && normalized.y <= 1f;
+        }
 
         [Header("Frame dump (debug)")]
         [SerializeField] bool dumpFrames = false;
@@ -58,8 +127,18 @@ namespace Forge
         public override void Classify(CameraFrame frame, List<PieceDetection> results)
         {
             results.Clear();
-            foreach (var f in fakeDetections)
-                results.Add(new PieceDetection { partId = f.partId, imagePoint = f.imagePoint, confidence = f.confidence });
+            if (mode == Mode.TouchToPlace)
+            {
+                if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
+                if (hasAnchor && frameSource != null && frameSource.HasCapture &&
+                    TryProject(frameSource.LatestCapture, anchor, out var ip))
+                    results.Add(new PieceDetection { partId = touchPartId, imagePoint = ip, confidence = 1f });
+            }
+            else
+            {
+                foreach (var f in fakeDetections)
+                    results.Add(new PieceDetection { partId = f.partId, imagePoint = f.imagePoint, confidence = f.confidence });
+            }
 
             if (dumpFrames && dumps < maxDumps && Time.unscaledTime >= nextDump && frame?.pixels != null)
             {
