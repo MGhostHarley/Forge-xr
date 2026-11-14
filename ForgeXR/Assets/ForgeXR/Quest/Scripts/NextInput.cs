@@ -13,8 +13,11 @@ namespace Forge
     {
         public UnityEvent onNext = new();
         public UnityEvent onBack = new();
+        /// <summary>Back to step 1 (Harley's Reset). Primary source: a virtual Reset PokeButton.</summary>
+        public UnityEvent onReset = new();
 
         public void RaiseNext() => onNext.Invoke();
         public void RaiseBack() => onBack.Invoke();
+        public void RaiseReset() => onReset.Invoke();
     }
 }
