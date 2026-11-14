@@ -21,7 +21,7 @@ namespace Forge.EditorTools
     public static class SetupPassthrough
     {
         /// <summary>Chunk 1's headset proof. Set to false and re-run setup to remove the cube.</summary>
-        const bool ShowDebugCube = true;
+        const bool ShowDebugCube = false;
         const string DebugCubeName = "ForgeDebugCube";
 
         const string ArSessionName = "AR Session";
