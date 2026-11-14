@@ -8,6 +8,7 @@ ForgeXR/[Ll]ogs/
 ForgeXR/[Uu]ser[Ss]ettings/
 ForgeXR/[Mm]emoryCaptures/
 ForgeXR/[Rr]ecordings/
+ForgeXR/.utmp/
 
 # IDE / OS
 .vs/
