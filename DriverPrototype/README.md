@@ -1,4 +1,10 @@
-# LEGO driver desktop walkthrough
+# Forge XR desktop walkthroughs
+
+Open `Assets/ForgeXR/ForgeDemo.unity` and enter Play Mode to run both walkthroughs in one scene. Choose **Driver** or **Wheel**, then use **Next** or Space to advance. Each walkthrough remembers its place when you switch. **Reset** restarts the selected walkthrough.
+
+The combined scene's `DemoWalkthrough` component exposes `ActiveWalkthrough`, `Advance()`, and `ResetWalkthrough()` for the Quest scene to use when connecting its own display and input.
+
+## Standalone driver walkthrough
 
 Open this folder in Unity Hub with Unity 6000.6.9f1. In the Project window, open `Assets/ForgeXR/DriverWalkthrough/DriverDesktop.unity` and enter Play Mode. Click the Game view to focus it, then use Space or the on-screen button to advance. Reset restarts the sequence after completion.
 

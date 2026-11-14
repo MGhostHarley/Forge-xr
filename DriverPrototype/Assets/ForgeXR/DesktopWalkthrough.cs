@@ -29,17 +29,15 @@ namespace ForgeXR
 
         protected void OnGUI()
         {
-            Event input = Event.current;
-            // KeyUp advances once per press, including when Space is held down.
-            if (input.type == EventType.KeyUp && input.keyCode == KeyCode.Space && !IsComplete)
-            {
-                Advance();
-                input.Use();
-            }
+            DrawPanel();
+        }
 
+        internal void DrawPanel(System.Action drawSelector = null)
+        {
             float width = Mathf.Min(Screen.width - 24, 560);
             float height = Screen.height - 24;
             GUILayout.BeginArea(new Rect((Screen.width - width) / 2, 12, width, height), GUI.skin.box);
+            drawSelector?.Invoke();
             GUILayout.Label(Title, GUI.skin.label);
             GUILayout.Label(IsComplete ? "Complete" : $"Step {StepIndex + 1} of {StepCount}");
             GUILayout.Space(8);
@@ -52,17 +50,23 @@ namespace ForgeXR
             if (CurrentStill != null)
                 GUI.DrawTexture(stillArea, CurrentStill, ScaleMode.ScaleToFit);
 
-            if (IsComplete)
+            bool advance = !IsComplete &&
+                GUILayout.Button(StepIndex == StepCount - 1 ? "Done (Space)" : "Next (Space)", GUILayout.Height(34));
+            bool reset = (IsComplete || drawSelector != null) && GUILayout.Button("Reset", GUILayout.Height(34));
+            GUILayout.EndArea();
+
+            Event input = Event.current;
+            // KeyUp advances once per press, including when Space is held down.
+            if (input.type == EventType.KeyUp && input.keyCode == KeyCode.Space && !IsComplete)
             {
-                if (GUILayout.Button("Reset", GUILayout.Height(34)))
-                    ResetWalkthrough();
-            }
-            else if (GUILayout.Button(StepIndex == StepCount - 1 ? "Done (Space)" : "Next (Space)", GUILayout.Height(34)))
-            {
-                Advance();
+                advance = true;
+                input.Use();
             }
 
-            GUILayout.EndArea();
+            if (reset)
+                ResetWalkthrough();
+            else if (advance)
+                Advance();
         }
     }
 }
