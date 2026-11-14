@@ -17,16 +17,15 @@ namespace Forge
     }
 
     /// <summary>
-    /// Scene naming and the staging mat's local frame.
-    /// Mat frame: origin at the mat centre on the table surface, +X = builder's right,
-    /// +Y = up, +Z = away from the builder (the builder stands on the -Z side; toes face -Z).
+    /// Scene naming. There is no physical mat any more: StagingMat is an identity-pose container for the
+    /// PickupSpots, which PieceTracker moves in world space onto the real pieces found by the camera.
     /// </summary>
     public static class ForgeScene
     {
         /// <summary>Root GameObject that holds all Forge objects.</summary>
         public const string RigRoot = "ForgeRig";
 
-        /// <summary>Child of RigRoot. Chunk 2 populates it; chunk 3 moves it onto the table at runtime.</summary>
+        /// <summary>Child of RigRoot at the identity pose; holds the spots (world position = local position).</summary>
         public const string StagingMat = "StagingMat";
 
         /// <summary>Pickup spot GameObjects are children of StagingMat named "Spot_" + part id.</summary>

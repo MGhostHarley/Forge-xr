@@ -10,7 +10,9 @@ namespace Forge
     ///   Glow  - filled disc inside the ring, only while highlighted.
     ///   Stem  - thin vertical line from the ring up to the label.
     ///   Label - TMP text above the spot that yaws to face the camera; its anchor never moves.
-    /// Idle spots stay visible in neutral white; highlighted spots turn yellow.
+    /// Highlighted spots: yellow pulsing ring + glow + stem + label. Idle spots: dim white ring only.
+    /// Hidden spots (piece never detected or lost; SetVisible is driven by PieceTracker) render nothing but stay
+    /// enabled, so they remain registered in HighlightRegistry.
     /// No colliders, so spots never block hand poke/pinch interactions.
     /// </summary>
     public class PickupSpot : MonoBehaviour
@@ -39,6 +41,8 @@ namespace Forge
         public string Id => id;
         public string Label => label;
         public bool IsHighlighted { get; private set; }
+        /// <summary>False while the piece is not on the table as far as the camera knows (set by PieceTracker).</summary>
+        public bool IsVisible { get; private set; } = true;
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
@@ -60,6 +64,14 @@ namespace Forge
             OnHighlightChanged(on);
         }
 
+        /// <summary>Shows or hides all of this spot's visuals without disabling it.</summary>
+        public void SetVisible(bool visible)
+        {
+            if (IsVisible == visible) return;
+            IsVisible = visible;
+            ApplyState(IsHighlighted);
+        }
+
         protected virtual void Awake()
         {
             if (ring != null) ringBaseScale = ring.transform.localScale;
@@ -77,13 +89,17 @@ namespace Forge
             var ringColor = on ? activeColor : idleRing;
             SetColor(ring, ringColor);
             SetColor(stem, on ? WithAlpha(activeColor, 0.8f) : idleStem);
+            if (ring != null) ring.enabled = IsVisible;
+            // Stem and name label only on the highlighted spot; idle spots are just the dim ring.
+            if (stem != null) stem.enabled = on && IsVisible;
             if (glow != null)
             {
-                glow.enabled = on;
+                glow.enabled = on && IsVisible;
                 SetColor(glow, WithAlpha(activeColor, activeGlowAlpha));
             }
             if (labelText != null)
             {
+                labelText.enabled = on && IsVisible;
                 labelText.color = on ? activeColor : idleLabel;
                 labelText.fontStyle = on ? FontStyles.Bold : FontStyles.Normal;
             }
@@ -92,6 +108,7 @@ namespace Forge
 
         void LateUpdate()
         {
+            if (!IsVisible) return;
             FaceCamera();
 
             if (IsHighlighted && ring != null)

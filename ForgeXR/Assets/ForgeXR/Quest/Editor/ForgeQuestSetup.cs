@@ -11,7 +11,8 @@ namespace Forge.EditorTools
     /// Marks a static, parameterless method as one step of the Quest scene setup.
     /// Steps run in ascending <see cref="Order"/>. Ranges by chunk:
     ///   100-199 passthrough/project settings, 200-299 pickup spots/staging mat,
-    ///   300-399 table alignment, 400-499 next input/walkthrough.
+    ///   300-399 table planes (former alignment), 400-499 next input/walkthrough,
+    ///   500-599 camera frames + piece placement, 900 diagnostics.
     /// Every step must be idempotent (find-or-create by name, safe to run twice).
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]
