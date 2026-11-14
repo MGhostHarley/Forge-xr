@@ -9,19 +9,21 @@ namespace Forge
     /// (Space advances in the desktop scene).
     ///
     /// Sources, all funnelled through the same gate (scene locked, grace window after lock, shared debounce):
-    ///   Primary (hand tracking): the virtual Next and Reset PokeButtons wired in the inspector.
+    ///   Primary (hand tracking): the floating Next and Reset buttons (PokeButton, pressed by pinch)
+    ///                            on the FloatingCue, wired in the inspector by Setup_NextInput.
     ///   Backup (controllers):    right A or trigger = Next (on press), right B tap = Back,
     ///                            left X held 1 s = Reset.
     ///   Editor:                  Space = Next, Backspace = Back, R = Reset.
     /// RaiseNext/RaiseBack/RaiseReset are gated too, so a uGUI button calling RaiseNext() and a
     /// controller press in the same moment still count as one advance.
-    /// Input is ignored while TableAligner.IsSceneLocked() is false (no TableAligner = locked).
+    /// Input is ignored while TableAligner.IsLocked is false (no TableAligner = locked). TableAligner is
+    /// now a no-op that always reports locked, so nothing here depends on alignment.
     /// </summary>
     public class NextInput : MonoBehaviour
     {
         public UnityEvent onNext = new();
         public UnityEvent onBack = new();
-        /// <summary>Back to step 1 (Harley's Reset). Primary source: a virtual Reset PokeButton.</summary>
+        /// <summary>Back to step 1 (Harley's Reset). Primary source: the floating Reset button.</summary>
         public UnityEvent onReset = new();
 
         [Header("Virtual buttons (hand tracking)")]

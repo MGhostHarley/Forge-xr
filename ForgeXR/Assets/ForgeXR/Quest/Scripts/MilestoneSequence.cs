@@ -9,7 +9,8 @@ namespace Forge
 {
     /// <summary>
     /// TEMPORARY placeholder for the joint milestone only: step 1 highlights legs + torso with one
-    /// line of text, Next moves the highlight to the head. No data model, no photos.
+    /// line of text (shown on the FloatingCue), Next moves the highlight to the head and the
+    /// button reads "Done". No data model, no photos.
     /// Harley's walkthrough replaces this by subscribing to the same NextInput events.
     /// Runs after default-order scripts so it takes over chunk 2's default torso highlight.
     /// </summary>
@@ -18,6 +19,7 @@ namespace Forge
     {
         [SerializeField] NextInput input;
         [SerializeField] TMP_Text cueText;
+        [SerializeField] FloatingCue cue;
 
         static readonly string[][] Targets =
         {
@@ -27,21 +29,24 @@ namespace Forge
 
         static readonly string[] Lines =
         {
-            "Press the torso onto the legs with the shirt print facing the toes.",
-            "Press the head onto the neck with the face pointing forward.",
+            "Press the torso onto the legs, print toward the toes.",
+            "Press the head onto the neck, face forward.",
         };
 
         int step;
 
-        public void Configure(NextInput nextInput, TMP_Text text)
+        public void Configure(NextInput nextInput, TMP_Text text, FloatingCue floatingCue = null)
         {
             input = nextInput;
             cueText = text;
+            cue = floatingCue;
         }
 
         void OnEnable()
         {
             if (input == null) input = FindAnyObjectByType<NextInput>();
+            if (cue == null) cue = FindAnyObjectByType<FloatingCue>();
+            if (cueText == null && cue != null) cueText = cue.Text;
             if (input == null) return;
             input.onNext.AddListener(Next);
             input.onBack.AddListener(Back);
@@ -67,7 +72,8 @@ namespace Forge
             step = i;
             HighlightRegistry.Highlight(Targets[i]);
             if (cueText != null)
-                cueText.text = $"<size=60%>Step {i + 1} of {Targets.Length}</size>\n{Lines[i]}";
+                cueText.text = $"<size=70%>Step {i + 1}/{Targets.Length}</size>  {Lines[i]}";
+            if (cue != null) cue.SetNextLabel(i == Targets.Length - 1 ? "Done" : "Next");
         }
     }
 }
