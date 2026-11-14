@@ -1,0 +1,32 @@
+# Unity generated
+ForgeXR/[Ll]ibrary/
+ForgeXR/[Tt]emp/
+ForgeXR/[Oo]bj/
+ForgeXR/[Bb]uild/
+ForgeXR/[Bb]uilds/
+ForgeXR/[Ll]ogs/
+ForgeXR/[Uu]ser[Ss]ettings/
+ForgeXR/[Mm]emoryCaptures/
+ForgeXR/[Rr]ecordings/
+
+# IDE / OS
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.DS_Store
+
+# Build artifacts
+*.apk
+*.aab
+*.unitypackage
+crashlytics-build.properties
