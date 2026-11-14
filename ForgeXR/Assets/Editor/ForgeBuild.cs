@@ -85,7 +85,10 @@ public static class ForgeBuild
         Directory.CreateDirectory(Path.GetDirectoryName(ApkPath));
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
-            scenes = new[] { ScenePath },
+            // Whatever is enabled in Build Settings: HelloWorld after CreateHelloScene,
+            // ForgeQuest after Forge.EditorTools.ForgeQuestSetup.Run.
+            scenes = System.Array.ConvertAll(
+                System.Array.FindAll(EditorBuildSettings.scenes, s => s.enabled), s => s.path),
             locationPathName = ApkPath,
             target = BuildTarget.Android,
             options = BuildOptions.None,
