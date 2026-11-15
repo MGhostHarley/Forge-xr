@@ -58,7 +58,7 @@ STEP_RULES = {
                                 "minifigure body?"},
     ("driver", 1): {"a": "head", "b": "torso", "mode": "touch", "anchor": "head",
                     "question": "Is the yellow LEGO minifigure head attached on top of the blue torso?"},
-    ("driver", 2): {"a": "hairpiece", "b": "head", "mode": "touch", "anchor": "hairpiece",
+    ("driver", 2): {"a": "hairpiece", "b": "head", "mode": "touch", "anchor": "hairpiece", "alt": "hair_on_figure",
                     "question": "Is the orange LEGO hair piece attached on top of the yellow minifigure head?"},
     # Wheel step 0 (pick up tire and rim) is manual, but if the rim is already in the tire, steps 0 and 1 are done.
     ("wheel", 0): {"alias": ("wheel", 1)},
@@ -135,6 +135,50 @@ def best_by_part(dets):
         if p and (p not in out or d.get("confidence", 0) > out[p].get("confidence", 0)):
             out[p] = d
     return out
+
+
+def colour_fractions(jpeg, box):
+    """(orange, yellow) pixel fractions inside a normalised box of the frame (saturated pixels only)."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(jpeg)).convert("RGB")
+    w, h = im.size
+    crop = im.crop((int(box[0] * w), int(box[1] * h), max(int(box[0] * w) + 1, int(box[2] * w)),
+                    max(int(box[1] * h) + 1, int(box[3] * h)))).convert("HSV")
+    px = list(crop.getdata())  # PIL hue is 0-255 (OpenCV 0-180): orange <= 20 (OpenCV 14), yellow 25-45 (18-32)
+    orange = sum(1 for hu, s, v in px if hu <= 20 and s > 120 and v > 50)
+    yellow = sum(1 for hu, s, v in px if 25 <= hu <= 45 and s > 120 and v > 80)
+    return orange / len(px), yellow / len(px)
+
+
+def hair_on_figure(jpeg, dets):
+    """Finished minifigure: the detector usually boxes hair-on-head as one "head" (or "hairpiece") box sitting on top
+    of the torso, so the hairpiece+head pair is rarely seen. That box is orange with the hair on and yellow without
+    (logged frames: bare head orange ~0 / yellow 0.55-0.6; with hair orange 0.27-0.61 / yellow < 0.2).
+    -> box of the hair if found, else None."""
+    if not jpeg:
+        return None
+    parts = best_by_part(dets)
+    torso = parts.get("torso")
+    if not torso:
+        return None
+    t = box_of(torso)
+    for p in ("head", "hairpiece"):
+        d = parts.get(p)
+        if not d:
+            continue
+        b = box_of(d)
+        hw, cx = b[2] - b[0], (b[0] + b[2]) / 2
+        on_top = (t[0] - 0.3 * hw <= cx <= t[2] + 0.3 * hw and b[1] < t[1]
+                  and abs(b[3] - t[1]) <= max(0.6 * (b[3] - b[1]), 0.02))
+        if not on_top:
+            continue
+        try:
+            orange, yellow = colour_fractions(jpeg, b)
+        except Exception:  # noqa: BLE001 - a bad frame is just not a hit
+            continue
+        if orange >= 0.3 and orange > yellow:
+            return b
+    return None
 
 
 def evaluate(rule, dets, cfg, memory, t):
@@ -299,6 +343,10 @@ class StepJudge:
                 return None
 
             hit, apart, box = evaluate(rule, dets, cfg, self.memory, t)
+            if not hit and rule.get("alt") == "hair_on_figure":
+                alt = hair_on_figure(jpeg, dets)
+                if alt:
+                    hit, box = True, alt
             self.hist.append((t, hit))
             self.seen_apart |= apart
             recent = list(self.hist)[-cfg["window"]:]

@@ -10,8 +10,10 @@ DEV=/sdcard/forge-rec
 case "${1:-}" in
   start)
     adb shell mkdir -p $DEV
-    adb shell "nohup sh -c 'i=0; while [ ! -f $DEV/stop ]; do i=\$((i+1)); \
-      screenrecord --time-limit 180 --size 1920x1008 --bit-rate 10000000 $DEV/seg_\$(date +%H%M%S).mp4; done; rm -f $DEV/stop' \
+    # While the headset sleeps screenrecord fails at once: drop the empty file and wait instead of spinning.
+    adb shell "nohup sh -c 'while [ ! -f $DEV/stop ]; do f=$DEV/seg_\$(date +%H%M%S).mp4; \
+      screenrecord --time-limit 180 --size 1920x1008 --bit-rate 10000000 \$f; \
+      if [ \$(stat -c %s \$f 2>/dev/null || echo 0) -lt 100000 ]; then rm -f \$f; sleep 5; fi; done; rm -f $DEV/stop' \
       >/dev/null 2>&1 &"
     echo "recording on the headset (3-min segments in $DEV); stop with: $0 stop"
     ;;

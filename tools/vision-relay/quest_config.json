@@ -1,6 +1,6 @@
 {
- "PieceTracker.maxMissedAnswers": 12,
- "PieceTracker.handMissedAnswers": 20,
+ "PieceTracker.maxMissedAnswers": 6,
+ "PieceTracker.handMissedAnswers": 6,
  "PieceTracker.trustedConfidence": 0.75,
  "PieceTracker.smoothingTime": 0.15,
  "ColorPieceTracker.minMatch": 0.2,

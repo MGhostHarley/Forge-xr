@@ -150,6 +150,15 @@ class NvidiaDetector:
 EDGE_MARGIN = 0.12
 
 
+MAX_BOX_SIDE = 0.45
+
+
+def too_big(xyxy, side=MAX_BOX_SIDE):
+    """A LEGO piece is never half the frame, even held close: such boxes (seen in a bright room: one "torso" over half
+    the room) are false."""
+    return xyxy[2] - xyxy[0] > side or xyxy[3] - xyxy[1] > side
+
+
 def near_edge(xyxy, margin=EDGE_MARGIN):
     """Box centre in the outer margin of the frame. The pieces sit mid-view while building; the false detections
     seen in practice (bags, shelves, the laptop) were at the frame edges, and the Quest keeps a box up for several
@@ -174,6 +183,19 @@ def drop_hair_on_body(best, thresh=0.5):
     if hair and any(p in best and iou(hair[1], best[p][1]) > thresh for p in ("torso", "legs")):
         del best["hairpiece"]
     return best
+
+
+def shown_to_quest(state, dets):
+    """Boxes the headset draws (the step judge still gets every detection). Before the torso is on the legs (driver
+    step 1) a "legs" box on the same spot as the "torso" box is the loose torso mislabelled (headset footage: a Legs
+    box on the torso while the real legs went unboxed), so it is hidden; once joined, both labels are right."""
+    if not state.startswith("driver,step=0"):
+        return dets
+    by = {d["partId"]: d for d in dets}
+    t, l = by.get("torso"), by.get("legs")
+    if t and l and iou([t["x0"], t["y0"], t["x1"], t["y1"]], [l["x0"], l["y0"], l["x1"], l["y1"]]) > 0.5:
+        return [d for d in dets if d is not l]
+    return dets
 
 
 class LocalYoloDetector:
@@ -203,7 +225,8 @@ class LocalYoloDetector:
             for b in r.boxes:
                 part = yolo.names[int(b.cls.item())]
                 c = float(b.conf.item())
-                if c < self.part_conf.get(part, self.conf) or near_edge(b.xyxyn[0].tolist()):
+                if c < self.part_conf.get(part, self.conf) or near_edge(b.xyxyn[0].tolist()) \
+                        or too_big(b.xyxyn[0].tolist()):
                     continue
                 if part in parts and (part not in best or c > best[part][0]):
                     best[part] = (c, b.xyxyn[0].tolist())
@@ -495,7 +518,8 @@ def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
                     limiter.note_rate_limited()
             dt = time.time() - t0
             step = self._step(state) if err else self._step(state, frame_id, jpeg, dets)
-            resp = {"detections": dets, "seconds": round(dt, 2), "model": detector.model, "error": err}
+            resp = {"detections": shown_to_quest(state, dets), "seconds": round(dt, 2), "model": detector.model,
+                    "error": err}
             if step:
                 resp["stepComplete"] = step
             self._send(200, resp)

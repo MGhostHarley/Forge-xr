@@ -5,7 +5,8 @@ The Quest app sends camera frames over the USB cable to the laptop relay, which 
 
 ## 1. Before the demo (2 min)
 
-Quick path: `tools/vision-relay/start_demo.sh` (port forward + relay with both models + app), then put the
+Quick path: `tools/vision-relay/start_demo.sh hybrid` (port forward + relay + app; use `hybrid` in an unseen or bright
+room, it is what made all three steps complete on their own in daylight; plain `start_demo.sh` = local only), then put the
 headset on, look at the table and run `tools/vision-relay/preflight.sh` until it prints READY.
 Default models: `~/forge-models/pieces-e12.pt,~/forge-models/pieces-e5.pt` (ensemble: e12 is best in the dim
 room, e5 generalises better to bright spaces). Override with `FORGE_WEIGHTS=...`.
@@ -33,8 +34,8 @@ Close any other camera app first (e.g. Harley's capture app `com.forge.forgexr.c
 
 | Flag | When |
 |---|---|
-| `--detector local` (default for the demo) | always works, 5 answers/s, no internet needed |
-| `--detector hybrid` | unseen/bright space and local misses pieces: adds a Nemotron check every 4 s (needs `~/nvapi.env`, internet; falls back to local if throttled) |
+| `--detector local` | always works, 5 answers/s, no internet needed; best in the dim room the models were tuned in |
+| `--detector hybrid` (recommended for the demo) | unseen/bright space and local misses pieces: adds a Nemotron check every 4 s (needs `~/nvapi.env`, internet; falls back to local if throttled) |
 | `--detector nvidia` | cloud only, ~2 s per answer, rate limited, last resort |
 | `--weights ~/forge-models/pieces-e5.pt` | roll back to the older model |
 
@@ -85,5 +86,8 @@ Step thresholds: `tools/vision-relay/step_config.json` (re-read on change).
 | no chime | the app was launched while the headset was asleep (Horizon mutes it): wear the headset, rerun `start_demo.sh` (or relaunch from the headset's app library); you should hear a test chime ~2 s after launch |
 | headset app is not the demo build (someone installed another APK) | `adb install -r ~/forge-models/ForgeXR-demo-freeze.apk` (frozen build, git tag `demo-freeze`) |
 | need to finish a step anyway | pinch Next, or `curl -X POST 127.0.0.1:8787/step/force` |
+
+Record what the wearer sees (no audio): `tools/vision-relay/record_headset.sh start|stop|pull` (videos show the
+room: keep them out of git).
 
 Diagnostics on the headset: `adb logcat -s Unity | grep ForgeDiag` (TRACKS, ANSWER, STEP, CONFIG lines).

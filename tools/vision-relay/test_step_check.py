@@ -229,13 +229,57 @@ def TOGETHER_SEQ(n):  # noqa: N802
     return [TOGETHER] * n
 
 
+class HairOnFigure(unittest.TestCase):
+    @staticmethod
+    def frame(top_colour):
+        from PIL import Image
+        im = Image.new("RGB", (100, 100), (230, 225, 215))
+        im.paste(top_colour, (40, 30, 60, 50))      # head (with or without hair) on top
+        im.paste((150, 190, 220), (38, 50, 62, 80))  # light-blue torso
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=95)
+        return buf.getvalue()
+
+    dets = [{"partId": "head", "x0": 0.4, "y0": 0.3, "x1": 0.6, "y1": 0.5, "confidence": 0.8},
+            {"partId": "torso", "x0": 0.38, "y0": 0.5, "x1": 0.62, "y1": 0.8, "confidence": 0.8}]
+
+    def test_orange_top_is_finished_figure(self):
+        self.assertIsNotNone(sc.hair_on_figure(self.frame((200, 70, 20)), self.dets))
+
+    def test_bare_yellow_head_is_not(self):
+        self.assertIsNone(sc.hair_on_figure(self.frame((240, 200, 20)), self.dets))
+
+    def test_step3_completes_from_figure_alone(self):
+        clock = {"t": 0.0}
+        j = sc.StepJudge(vlm=None, limiter=None, clock=lambda: clock["t"], async_vlm=False)
+        jpeg, out = self.frame((200, 70, 20)), None
+        for i in range(30):
+            clock["t"] = i * 0.2
+            out = j.observe("driver,step=2,complete=false", str(i), jpeg, self.dets) or out
+        self.assertIsNotNone(out)
+
+
 class EdgeFilter(unittest.TestCase):
+    def test_giant_boxes_dropped(self):
+        import relay
+        self.assertTrue(relay.too_big([0.0, 0.44, 0.82, 1.0]))     # "torso" over half the room
+        self.assertFalse(relay.too_big([0.3, 0.5, 0.6, 0.85]))     # piece held close
+
     def test_edge_boxes_dropped(self):
         import relay
         self.assertFalse(relay.near_edge([0.45, 0.45, 0.55, 0.55]))   # mid-view piece
         self.assertFalse(relay.near_edge([0.30, 0.60, 0.70, 0.95]))   # big close-up piece, centre inside
         self.assertTrue(relay.near_edge([0.95, 0.15, 0.99, 0.23]))    # false torso seen top-right
         self.assertTrue(relay.near_edge([0.89, 0.52, 0.95, 0.56]))    # false hairpiece at the right edge
+
+    def test_legs_on_torso_hidden_before_join(self):
+        import relay
+        box = dict(x0=0.4, y0=0.4, x1=0.45, y1=0.46, confidence=0.8)
+        dets = [dict(box, partId="torso"), dict(box, partId="legs", y0=0.405)]
+        self.assertEqual([d["partId"] for d in relay.shown_to_quest("driver,step=0,complete=false", dets)], ["torso"])
+        self.assertEqual(len(relay.shown_to_quest("driver,step=1,complete=false", dets)), 2)   # joined: both right
+        apart = [dict(box, partId="torso"), dict(box, partId="legs", x0=0.6, x1=0.65)]
+        self.assertEqual(len(relay.shown_to_quest("driver,step=0,complete=false", apart)), 2)
 
     def test_hair_on_body_dropped(self):
         import relay
