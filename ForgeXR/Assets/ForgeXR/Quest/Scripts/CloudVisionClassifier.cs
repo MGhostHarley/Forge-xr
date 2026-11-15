@@ -63,6 +63,10 @@ namespace Forge
         /// </summary>
         public string[] RequestedParts { get; set; }
 
+        /// <summary>If &gt; 0, every Nth request asks for all parts anyway (lets auto-select notice the other
+        /// walkthrough's pieces); the others ask only for <see cref="RequestedParts"/>.</summary>
+        public int ProbeAllEveryN { get; set; }
+
         void Start()
         {
             try
@@ -158,7 +162,8 @@ namespace Forge
                 timeout = requestTimeoutSeconds,
             };
             req.SetRequestHeader("X-Frame-Id", frameId.ToString());
-            if (RequestedParts != null && RequestedParts.Length > 0)
+            var probeAll = ProbeAllEveryN > 0 && requests % ProbeAllEveryN == 0;
+            if (!probeAll && RequestedParts != null && RequestedParts.Length > 0)
                 req.SetRequestHeader("X-Parts", string.Join(",", RequestedParts));
             yield return req.SendWebRequest();
             lastLatency = Time.unscaledTime - started;

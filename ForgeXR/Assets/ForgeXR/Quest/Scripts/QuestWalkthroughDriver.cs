@@ -265,8 +265,12 @@ namespace Forge
             // after completion, so auto-select can still tell the driver and wheel pieces apart.
             if (cloud == null) cloud = FindAnyObjectByType<CloudVisionClassifier>();
             if (cloud != null)
-                cloud.RequestedParts = (step == 0 || complete) ? null
-                    : (flow == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging);
+            {
+                // Always this walkthrough's parts (other labels get confused onto our pieces and hide them); at step 1
+                // and on the completion screen, 1 request in 4 asks for every part so auto-select can switch.
+                cloud.RequestedParts = flow == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging;
+                cloud.ProbeAllEveryN = (step == 0 || complete) ? 4 : 0;
+            }
         }
 
         string[] PartsFor(int step)
