@@ -229,5 +229,24 @@ def TOGETHER_SEQ(n):  # noqa: N802
     return [TOGETHER] * n
 
 
+class EdgeFilter(unittest.TestCase):
+    def test_edge_boxes_dropped(self):
+        import relay
+        self.assertFalse(relay.near_edge([0.45, 0.45, 0.55, 0.55]))   # mid-view piece
+        self.assertFalse(relay.near_edge([0.30, 0.60, 0.70, 0.95]))   # big close-up piece, centre inside
+        self.assertTrue(relay.near_edge([0.95, 0.15, 0.99, 0.23]))    # false torso seen top-right
+        self.assertTrue(relay.near_edge([0.89, 0.52, 0.95, 0.56]))    # false hairpiece at the right edge
+
+    def test_hair_on_body_dropped(self):
+        import relay
+        body = [0.27, 0.53, 0.31, 0.59]
+        best = {"torso": (0.556, body), "hairpiece": (0.285, [0.27, 0.535, 0.31, 0.59])}
+        self.assertNotIn("hairpiece", relay.drop_hair_on_body(best))
+        best = {"legs": (0.3, body), "hairpiece": (0.4, [0.6, 0.5, 0.63, 0.54])}       # hair elsewhere: kept
+        self.assertIn("hairpiece", relay.drop_hair_on_body(best))
+        best = {"head": (0.5, body), "hairpiece": (0.3, [0.27, 0.52, 0.31, 0.57])}     # hair on head: kept
+        self.assertIn("hairpiece", relay.drop_hair_on_body(best))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

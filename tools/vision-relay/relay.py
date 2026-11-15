@@ -147,6 +147,35 @@ class NvidiaDetector:
         return out, content
 
 
+EDGE_MARGIN = 0.12
+
+
+def near_edge(xyxy, margin=EDGE_MARGIN):
+    """Box centre in the outer margin of the frame. The pieces sit mid-view while building; the false detections
+    seen in practice (bags, shelves, the laptop) were at the frame edges, and the Quest keeps a box up for several
+    missed frames, so one such hit leaves a stray box in the room."""
+    cx, cy = (xyxy[0] + xyxy[2]) / 2, (xyxy[1] + xyxy[3]) / 2
+    return not (margin <= cx <= 1 - margin and margin <= cy <= 1 - margin)
+
+
+def iou(a, b):
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def drop_hair_on_body(best, thresh=0.5):
+    """The weakly learned hairpiece class also fires on the torso/legs (same box, seen in the headset footage), which
+    stacks a Hairpiece box on the body while the real hair goes unboxed. Hair never sits directly on the torso or
+    legs, so a hairpiece box that coincides with one is the body: drop it. Hair on the head is left alone (step 3)."""
+    hair = best.get("hairpiece")
+    if hair and any(p in best and iou(hair[1], best[p][1]) > thresh for p in ("torso", "legs")):
+        del best["hairpiece"]
+    return best
+
+
 class LocalYoloDetector:
     """Fine-tuned YOLO (tools/local-detector) on the laptop: ~50-100 ms CPU, no API, no rate limit.
     Needs the detector venv (ultralytics): run the relay with ~/.venvs/forge-detector/bin/python."""
@@ -174,10 +203,11 @@ class LocalYoloDetector:
             for b in r.boxes:
                 part = yolo.names[int(b.cls.item())]
                 c = float(b.conf.item())
-                if c < self.part_conf.get(part, self.conf):
+                if c < self.part_conf.get(part, self.conf) or near_edge(b.xyxyn[0].tolist()):
                     continue
                 if part in parts and (part not in best or c > best[part][0]):
                     best[part] = (c, b.xyxyn[0].tolist())
+        drop_hair_on_body(best)
         out = [{"partId": p, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                 # The relay's threshold already filtered; report as trusted like the cloud answers (Quest drops < 0.5).
                 "confidence": 0.8, "score": round(c, 3)} for p, (c, (x0, y0, x1, y1)) in best.items()]
