@@ -9,8 +9,9 @@ Quest side: Forge.CloudVisionClassifier POSTs image/jpeg to http://<this-laptop>
 (over USB: `adb reverse tcp:8787 tcp:8787`, then the default http://127.0.0.1:8787 works).
 
 Response: {"detections": [{"partId", "x0", "y0", "x1", "y1", "confidence"}], "seconds", "model", "error"}
-with coordinates normalised 0-1 relative to the posted image (x from the left, y from the top).
-GET /health returns {"ok": true, "model": ...}.
+with coordinates normalised 0-1 relative to the posted image (x from the left, y from the top), plus an optional
+"stepComplete" object once step_check.StepJudge has confirmed the step in X-State (see step_check.py).
+GET /health returns {"ok": true, "model": ...}. GET /step: step judge status. POST /step/reset clears it.
 """
 import argparse, base64, collections, html, io, json, os, pathlib, statistics, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,8 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))  # python -I does not put the script's folder on sys.path
+import step_check  # noqa: E402  (automatic step completion: geometry + VLM yes/no)
 CONFIG_PATH = HERE / "quest_config.json"  # live Quest tuning, served at /config (Forge.RemoteConfig polls it)
 
 # Part-selection policy (laptop side). The Quest reports X-State "driver,step=N,complete=bool".
@@ -237,7 +240,15 @@ figcaption{{font-size:12px;color:#aaa;padding:2px}}.s{{margin-bottom:10px;color:
 <div class=s>{stats}</div><div class=g>{items}</div></body></html>"""
 
 
-def make_handler(detector, log_dir, limiter, log_every=1):
+def try_nvidia_key():
+    """The NVIDIA key, or None (nvidia_key() exits when there is none)."""
+    try:
+        return nvidia_key()
+    except SystemExit:
+        return None
+
+
+def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
     lock = threading.Lock()
     counter = {"n": 0}
     recent = collections.deque(maxlen=48)  # newest last: dicts with n, t, frame, seconds, parts, dets, err
@@ -305,20 +316,44 @@ def make_handler(detector, log_dir, limiter, log_every=1):
                 self._raw(200, data, "application/json")
             elif self.path.startswith("/stats"):
                 self._send(200, {"summary": stats_text()})
+            elif self.path.startswith("/step"):
+                self._send(200, judge.status() if judge else {"status": "off"})
             else:
                 self._send(404, {"error": "not found"})
 
+        def _step(self, state, frame_id=None, jpeg=None, dets=None):
+            """stepComplete payload for this answer (None if not confirmed). Never raises."""
+            if judge is None:
+                return None
+            try:
+                if dets is None:
+                    return judge.current(state)
+                return judge.observe(state, frame_id, jpeg, dets)
+            except Exception as e:  # noqa: BLE001 - step detection must never break serving
+                print(f"[relay] step judge error: {e}", flush=True)
+                return None
+
         def do_POST(self):
+            if self.path.startswith("/step/reset"):
+                if judge:
+                    judge.reset()
+                self._send(200, {"ok": True})
+                return
             if not self.path.startswith("/detect"):
                 self._send(404, {"error": "not found"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
             jpeg = self.rfile.read(length)
             frame_id = self.headers.get("X-Frame-Id", "?")
+            state = self.headers.get("X-State", "")
             t0 = time.time()
             if not limiter.try_acquire():
                 # Over the upstream cap: answer at once with an error (the Quest backs off, boxes are kept).
-                self._send(200, {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"})
+                resp = {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"}
+                step = self._step(state)
+                if step:
+                    resp["stepComplete"] = step
+                self._send(200, resp)
                 print(f"[relay] frame {frame_id}: skipped (over {limiter.per_minute}/min or cooling down after a 429)", flush=True)
                 return
             try:
@@ -334,15 +369,22 @@ def make_handler(detector, log_dir, limiter, log_every=1):
                 if "429" in err:
                     limiter.note_rate_limited()
             dt = time.time() - t0
-            self._send(200, {"detections": dets, "seconds": round(dt, 2), "model": detector.model, "error": err})
+            step = self._step(state) if err else self._step(state, frame_id, jpeg, dets)
+            resp = {"detections": dets, "seconds": round(dt, 2), "model": detector.model, "error": err}
+            if step:
+                resp["stepComplete"] = step
+            self._send(200, resp)
+            judge_text = judge.status()["status"] if judge else ""
             labels = ", ".join(d["partId"] for d in dets) or "-"
             asked = ",".join(wanted) if wanted else "all"
-            print(f"[relay] frame {frame_id}: {dt:.1f}s asked={asked} -> {err or labels}", flush=True)
+            print(f"[relay] frame {frame_id}: {dt:.1f}s asked={asked} -> {err or labels}"
+                  + (f" | {judge_text}" if judge_text else ""), flush=True)
             with lock:
                 counter["n"] += 1
                 n = counter["n"]
             try:
-                ann = annotate(jpeg, dets, f"#{n} f{frame_id} {dt:.1f}s asked={asked} -> {err or labels}")
+                ann = annotate(jpeg, dets, f"#{n} f{frame_id} {dt:.1f}s asked={asked} -> {err or labels}"
+                               + (f" | {judge_text}" if judge_text else ""))
             except Exception:  # noqa: BLE001 - diagnostics must never break serving
                 ann = None
             with lock:
@@ -356,7 +398,8 @@ def make_handler(detector, log_dir, limiter, log_every=1):
                 stem =log_dir / f"{time.strftime('%H%M%S')}_{n:05d}_f{frame_id}"
                 stem.with_suffix(".jpg").write_bytes(jpeg)
                 stem.with_suffix(".json").write_text(json.dumps(
-                    {"frameId": frame_id, "seconds": dt, "parts": asked, "detections": dets, "error": err, "raw": raw},
+                    {"frameId": frame_id, "t": round(t0, 3), "state": state, "seconds": dt, "parts": asked,
+                     "detections": dets, "error": err, "raw": raw, "judge": judge_text, "stepComplete": step},
                     indent=1))
                 if ann:
                     (log_dir / "annotated").mkdir(exist_ok=True)
@@ -380,34 +423,60 @@ def main():
     ap.add_argument("--weights", default="", help="local: path to the fine-tuned YOLO .pt")
     ap.add_argument("--local-conf", type=float, default=0.3, help="local: min YOLO score")
     ap.add_argument("--log-every", type=int, default=1, help="save every Nth frame (local runs fast; saves disk)")
+    ap.add_argument("--no-step", action="store_true", help="turn off automatic step completion (step_check.py)")
+    ap.add_argument("--step-vlm-per-minute", type=int, default=6,
+                    help="VLM yes/no confirmations per minute (local detector; with --detector nvidia they share its cap)")
     a = ap.parse_args()
 
     if a.detector == "local":
         detector = LocalYoloDetector(a.weights, conf=a.local_conf)
         a.max_per_minute = 0  # no upstream API
+        key = try_nvidia_key()
     else:
-        detector = NvidiaDetector(nvidia_key())
+        key = nvidia_key()
+        detector = NvidiaDetector(key)
     log_dir = None if a.no_log else pathlib.Path(a.log_dir).expanduser()
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
+    limiter = RateLimiter(a.max_per_minute)
+    judge = None
+    if not a.no_step:
+        vlm = step_check.NvidiaYesNo(key, NVIDIA_URL, NVIDIA_MODEL) if key else None
+        # NVIDIA detector: confirmations share its limiter. Local: their own small cap (+ 429 cooldown).
+        vlm_limiter = limiter if a.detector == "nvidia" else RateLimiter(a.step_vlm_per_minute)
+        judge = step_check.StepJudge(vlm=vlm, limiter=vlm_limiter,
+                                     crop_dir=(log_dir / "step-crops") if log_dir else None,
+                                     log=lambda m: print(m, flush=True))
+        print(f"[relay] step completion on (VLM confirm: {'yes' if vlm else 'no key, geometry only'})", flush=True)
     server = ThreadingHTTPServer((a.host, a.port),
-                                 make_handler(detector, log_dir, RateLimiter(a.max_per_minute), a.log_every))
+                                 make_handler(detector, log_dir, limiter, a.log_every, judge))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
     print(f"[relay] live review page: http://127.0.0.1:{a.port}/review", flush=True)
-    # Auto-reload: restart this process when relay.py changes (edit and it is live; config is read per request).
+    # Auto-reload: restart this process when relay.py or step_check.py changes (edit and it is live; quest_config.json
+    # and step_config.json are read per request).
     me = pathlib.Path(__file__).resolve()
-    mtime = me.stat().st_mtime
+    watched = [me, HERE / "step_check.py"]
+
+    def mtimes():
+        out = []
+        for f in watched:
+            try:
+                out.append(f.stat().st_mtime)
+            except OSError:
+                out.append(None)
+        return out
+
+    start = mtimes()
 
     def watch():
         while True:
             time.sleep(1)
-            try:
-                if me.stat().st_mtime != mtime:
-                    print("[relay] relay.py changed: reloading", flush=True)
-                    server.shutdown()
-                    return
-            except OSError:
-                pass
+            now = mtimes()
+            if now != start and all(m is not None for m in now):
+                changed = [f.name for f, a0, b0 in zip(watched, start, now) if a0 != b0]
+                print(f"[relay] {', '.join(changed)} changed: reloading", flush=True)
+                server.shutdown()
+                return
 
     threading.Thread(target=watch, daemon=True).start()
     try:
