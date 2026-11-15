@@ -40,8 +40,7 @@ namespace Forge
         [SerializeField] PassthroughCameraModel cameraModel;
 
         [Header("Frames handed to the classifier")]
-        [SerializeField] int frameWidth = 320;
-        [SerializeField] int frameHeight = 240;
+        public const int CaptureSize = 640;
         [SerializeField] float framesPerSecond = 5f;
         [Tooltip("Drop an async conversion that has not finished after this long (s).")]
         [SerializeField] float conversionTimeout = 1f;
@@ -122,20 +121,31 @@ namespace Forge
                 if (!cameraModel.TryGetCameraPose(image.timestamp, out var pose, out var age)) { Status = "no head pose"; return true; }
 
                 lastTimestamp = image.timestamp;
+                int cropSize = Mathf.Min(image.width, image.height);
+                var crop = new RectInt((image.width - cropSize) / 2, (image.height - cropSize) / 2, cropSize, cropSize);
+                int outputSize = Mathf.Min(CaptureSize, cropSize);
                 var conversion = new XRCpuImage.ConversionParams
                 {
-                    inputRect = new RectInt(0, 0, image.width, image.height),
-                    outputDimensions = new Vector2Int(Mathf.Clamp(frameWidth, 8, image.width), Mathf.Clamp(frameHeight, 8, image.height)),
+                    inputRect = crop,
+                    outputDimensions = new Vector2Int(outputSize, outputSize),
                     outputFormat = TextureFormat.RGBA32,
                     transformation = XRCpuImage.Transformation.None, // row 0 = top of the image
                 };
 
+                // Express the camera intrinsics in the cropped output's pixel coordinates.
+                var intrinsicsSize = intrinsics.resolution.x > 0 && intrinsics.resolution.y > 0
+                    ? intrinsics.resolution
+                    : image.dimensions;
+                var toImagePixels = new Vector2((float)image.width / intrinsicsSize.x,
+                    (float)image.height / intrinsicsSize.y);
+                float outputScale = (float)outputSize / cropSize;
                 pendingInfo = new CaptureInfo
                 {
                     cameraPose = pose,
-                    focalLength = intrinsics.focalLength,
-                    principalPoint = intrinsics.principalPoint,
-                    intrinsicsResolution = intrinsics.resolution.x > 0 ? intrinsics.resolution : image.dimensions,
+                    focalLength = Vector2.Scale(intrinsics.focalLength, toImagePixels) * outputScale,
+                    principalPoint = (Vector2.Scale(intrinsics.principalPoint, toImagePixels) -
+                        new Vector2(crop.x, crop.y)) * outputScale,
+                    intrinsicsResolution = conversion.outputDimensions,
                     imageAgeSeconds = age,
                 };
                 pendingTimestamp = image.timestamp;
@@ -211,7 +221,7 @@ namespace Forge
         {
             var cam = Camera.main;
             if (cam == null) return;
-            int w = Mathf.Max(8, frameWidth), h = Mathf.Max(8, frameHeight);
+            const int w = CaptureSize, h = CaptureSize;
             FillFrame(w, h, Time.realtimeSinceStartupAsDouble);
             var grey = new Color32(96, 96, 96, 255);
             for (var i = 0; i < frame.pixels.Length; i++) frame.pixels[i] = grey;

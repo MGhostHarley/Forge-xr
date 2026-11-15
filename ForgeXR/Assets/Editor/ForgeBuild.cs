@@ -104,8 +104,8 @@ public static class ForgeBuild
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.forge.forgexr.capture");
         PlayerSettings.productName = "ForgeXR Capture";
-        PlayerSettings.Android.bundleVersionCode = 2;
-        PlayerSettings.bundleVersion = "1.1";
+        PlayerSettings.Android.bundleVersionCode = 3;
+        PlayerSettings.bundleVersion = "1.2";
 
         Directory.CreateDirectory(Path.GetDirectoryName(ApkPath));
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions

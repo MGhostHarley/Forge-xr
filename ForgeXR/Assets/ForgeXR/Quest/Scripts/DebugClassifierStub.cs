@@ -103,17 +103,28 @@ namespace Forge
 
         void DumpFrame(CameraFrame frame)
         {
-            int w = frame.width, h = frame.height;
-            if (dumpTexture == null || dumpTexture.width != w || dumpTexture.height != h)
+            const int size = CameraFrameSource.CaptureSize;
+            if (dumpTexture == null)
             {
-                if (dumpTexture != null) Destroy(dumpTexture);
-                dumpTexture = new Texture2D(w, h, TextureFormat.RGBA32, false);
-                dumpPixels = new Color32[w * h];
+                dumpTexture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+                dumpPixels = new Color32[size * size];
             }
 
-            // CameraFrame row 0 is the top; Texture2D row 0 is the bottom.
-            for (var y = 0; y < h; y++)
-                Array.Copy(frame.pixels, y * w, dumpPixels, (h - 1 - y) * w, w);
+            // CameraFrame uses a top-left origin. Flip rows for Unity's texture.
+            for (int y = 0; y < size; y++)
+            {
+                int sourceRow = y * frame.height / size * frame.width;
+                int targetRow = (size - 1 - y) * size;
+                if (frame.width == size)
+                {
+                    Array.Copy(frame.pixels, sourceRow, dumpPixels, targetRow, size);
+                    continue;
+                }
+
+                // The native camera can supply a smaller image on some configurations.
+                for (int x = 0; x < size; x++)
+                    dumpPixels[targetRow + x] = frame.pixels[sourceRow + x * frame.width / size];
+            }
 
             dumpTexture.SetPixels32(dumpPixels);
             dumpTexture.Apply(false);
