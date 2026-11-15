@@ -39,7 +39,8 @@ namespace Forge
         class Track
         {
             public PickupSpot spot;
-            public bool everSeen, visible, tracked;
+            public bool everSeen, visible, tracked, hasSize;
+            public Vector2 size;
             public Vector3 target;
             public float lastSeen = float.NegativeInfinity;
             /// <summary>Seconds the spot has been inside the camera view without a detection.</summary>
@@ -96,6 +97,24 @@ namespace Forge
         }
 
         /// <summary>One detection of <paramref name="partId"/> at a table point this frame.</summary>
+        /// <summary>Report with the object's apparent size (m) and whether it was placed in a hand (lifted).</summary>
+        public void Report(string partId, Vector3 point, float confidence, Vector2 size, bool inHand)
+        {
+            Report(partId, point, confidence);
+            if (!tracks.TryGetValue(partId, out var t) || t.spot == null || confidence < minConfidence) return;
+            t.size = t.hasSize ? Vector2.Lerp(t.size, size, 0.5f) : size;
+            t.hasSize = true;
+            t.spot.SetBox(t.size, !inHand);
+        }
+
+        /// <summary>Report keeping the last known size, updating whether the piece is in a hand.</summary>
+        public void Report(string partId, Vector3 point, float confidence, bool inHand)
+        {
+            Report(partId, point, confidence);
+            if (tracks.TryGetValue(partId, out var t) && t.spot != null && t.hasSize && confidence >= minConfidence)
+                t.spot.SetBox(t.size, !inHand);
+        }
+
         public void Report(string partId, Vector3 tablePoint, float confidence)
         {
             if (confidence < minConfidence || string.IsNullOrEmpty(partId)) return;

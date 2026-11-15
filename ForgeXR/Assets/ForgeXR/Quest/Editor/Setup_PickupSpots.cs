@@ -132,6 +132,16 @@ namespace Forge.EditorTools
                 so.FindProperty("stem").objectReferenceValue = stem;
                 so.FindProperty("labelRoot").objectReferenceValue = labelGo.transform;
                 so.FindProperty("labelText").objectReferenceValue = tmp;
+                var boxGo = ForgeSetupUtil.GetOrCreateChild(spotGo.transform, "Box");
+                var line = ForgeSetupUtil.GetOrAdd<LineRenderer>(boxGo);
+                line.useWorldSpace = false;
+                line.loop = true;
+                line.positionCount = 4;
+                line.widthMultiplier = 0.003f;
+                line.numCornerVertices = 2;
+                line.sharedMaterial = spotMaterial;
+                NoShadows(line);
+                so.FindProperty("box").objectReferenceValue = line;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(spot);
             }

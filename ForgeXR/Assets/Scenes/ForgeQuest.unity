@@ -595,6 +595,7 @@ MonoBehaviour:
   minForwardOfHead: 0.15
   binSize: 0.015
   switchRatio: 1.5
+  handRayRadius: 0.07
 --- !u!114 &245596510
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -609,9 +610,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Forge.CameraFrameSource
   cameraManager: {fileID: 1893880872}
   cameraModel: {fileID: 245596511}
-  framesPerSecond: 5
+  framesPerSecond: 10
   conversionTimeout: 1
   editorSyntheticFrames: 1
+  stallRestartSeconds: 3
 --- !u!114 &245596511
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4989,7 +4991,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Forge.CloudVisionClassifier
   relayUrl: http://127.0.0.1:8787
-  minInterval: 2
+  minInterval: 1
   requestTimeoutSeconds: 8
   jpegQuality: 85
   defaultConfidence: 0.8

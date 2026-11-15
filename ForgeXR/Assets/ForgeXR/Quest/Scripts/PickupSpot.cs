@@ -26,6 +26,10 @@ namespace Forge
         [SerializeField] MeshRenderer stem;
         [SerializeField] Transform labelRoot;
         [SerializeField] TMP_Text labelText;
+        [Tooltip("Camera-facing bounding box outline drawn over the detected object (replaces the table ring).")]
+        [SerializeField] LineRenderer box;
+        [SerializeField] float activeLineWidth = 0.004f;
+        [SerializeField] float idleLineWidth = 0.002f;
 
         [Header("Colours")]
         [SerializeField] Color idleRing = new(1f, 1f, 1f, 0.55f);
@@ -47,6 +51,16 @@ namespace Forge
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         MaterialPropertyBlock mpb;
+        Vector2 boxSize = new(0.04f, 0.04f); // world metres (width, height) of the object as seen by the camera
+        bool boxOnTable = true;               // on the table the object's centre is above the spot; in a hand it's at it
+        readonly Vector3[] corners = new Vector3[4];
+
+        /// <summary>Object size (m) and whether it rests on the table; set by PieceTracker from detections.</summary>
+        public void SetBox(Vector2 size, bool onTable)
+        {
+            boxSize = size;
+            boxOnTable = onTable;
+        }
         Vector3 ringBaseScale = Vector3.one;
         Camera cam;
 
@@ -89,13 +103,15 @@ namespace Forge
             var ringColor = on ? activeColor : idleRing;
             SetColor(ring, ringColor);
             SetColor(stem, on ? WithAlpha(activeColor, 0.8f) : idleStem);
-            if (ring != null) ring.enabled = IsVisible;
-            // Stem and name label only on the highlighted spot; idle spots are just the dim ring.
-            if (stem != null) stem.enabled = IsVisible;
-            if (glow != null)
+            // Bounding box over the object replaces the flat table ring (ring/glow/stem stay hidden).
+            if (ring != null) ring.enabled = box == null && IsVisible;
+            if (stem != null) stem.enabled = false;
+            if (glow != null) glow.enabled = false;
+            if (box != null)
             {
-                glow.enabled = on && IsVisible;
-                SetColor(glow, WithAlpha(activeColor, activeGlowAlpha));
+                box.enabled = IsVisible;
+                box.widthMultiplier = on ? activeLineWidth : idleLineWidth;
+                SetColor(box, on ? activeColor : idleRing);
             }
             if (labelText != null)
             {
@@ -109,6 +125,7 @@ namespace Forge
         void LateUpdate()
         {
             if (!IsVisible) return;
+            UpdateBox();
             FaceCamera();
 
             if (IsHighlighted && ring != null)
@@ -117,6 +134,24 @@ namespace Forge
                 ring.transform.localScale = ringBaseScale * (1f + pulseScale * s);
                 if (glow != null) SetColor(glow, WithAlpha(activeColor, activeGlowAlpha * (0.6f + 0.4f * s)));
             }
+        }
+
+        void UpdateBox()
+        {
+            if (box == null) return;
+            if (cam == null || !cam.isActiveAndEnabled) { cam = Camera.main; if (cam == null) return; }
+            var centre = transform.position + (boxOnTable ? Vector3.up * (boxSize.y * 0.5f) : Vector3.zero);
+            var bt = box.transform;
+            bt.position = centre;
+            var toCam = cam.transform.position - centre;
+            if (toCam.sqrMagnitude > 1e-6f) bt.rotation = Quaternion.LookRotation(-toCam.normalized, cam.transform.up);
+            float hx = boxSize.x * 0.5f, hy = boxSize.y * 0.5f;
+            corners[0] = new Vector3(-hx, -hy, 0f); corners[1] = new Vector3(hx, -hy, 0f);
+            corners[2] = new Vector3(hx, hy, 0f); corners[3] = new Vector3(-hx, hy, 0f);
+            box.loop = true;
+            box.positionCount = 4;
+            box.SetPositions(corners);
+            if (labelRoot != null) labelRoot.position = centre + cam.transform.up * (hy + 0.018f);
         }
 
         /// <summary>Yaw-only billboard: the label's position stays fixed, only its heading changes.</summary>

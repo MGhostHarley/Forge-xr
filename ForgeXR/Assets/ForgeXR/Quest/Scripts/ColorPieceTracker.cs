@@ -153,8 +153,8 @@ namespace Forge
                 if (match < minMatch * m.learnedMatch) { m.active = false; lost++; continue; } // let the classifier re-find it
 
                 var ray = info.ImagePointToRay(new Vector2(c.x / w, c.y / h));
-                if (!table.TryPlace(ray, out var p, out _)) continue;
-                tracker.Report(kv.Key, p, reportConfidence);
+                if (!table.TryPlace(ray, out var p, out var inHand)) continue;
+                tracker.Report(kv.Key, p, reportConfidence, inHand);
                 updates++;
             }
         }

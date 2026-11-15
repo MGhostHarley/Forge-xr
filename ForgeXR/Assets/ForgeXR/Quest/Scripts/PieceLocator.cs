@@ -88,8 +88,14 @@ namespace Forge
                 if (d.frameId > 0 && d.frameId != frame.frameId && !history.TryGetValue(d.frameId, out source))
                     continue; // computed on a frame older than the pose history: can't place it reliably
                 var ray = source.ImagePointToRay(d.imagePoint);
-                if (!table.TryPlace(ray, out var p, out _)) continue;
-                tracker.Report(d.partId, p, d.confidence);
+                if (!table.TryPlace(ray, out var p, out var inHand)) continue;
+                var dist = Vector3.Distance(p, source.cameraPose.position);
+                var size = d.imageBox.width > 0f && source.focalLength.x > 0f
+                    ? new Vector2(d.imageBox.width * source.intrinsicsResolution.x / source.focalLength.x,
+                                  d.imageBox.height * source.intrinsicsResolution.y / source.focalLength.y) * (dist * 1.15f)
+                    : new Vector2(0.04f, 0.04f);
+                size = new Vector2(Mathf.Clamp(size.x, 0.015f, 0.35f), Mathf.Clamp(size.y, 0.015f, 0.35f));
+                tracker.Report(d.partId, p, d.confidence, size, inHand);
                 if (colorTracker != null && d.imageBox.width > 0f) colorTracker.Learn(d.partId, d.frameId > 0 ? d.frameId : frame.frameId, d.imageBox);
                 placed++;
                 lastPlacement = $"{d.partId}@{p:F3} img={d.imagePoint:F2} conf={d.confidence:F2} table={table.LastSource}";
