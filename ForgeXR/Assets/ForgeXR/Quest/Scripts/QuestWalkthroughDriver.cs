@@ -213,6 +213,7 @@ namespace Forge
                 else demo.SelectDriver();
             }
             Active.ResetWalkthrough();
+            if (tracker != null) tracker.SetShownParts(f == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging);
             Debug.Log($"[Forge] Walkthrough: {f} ({reason})");
             Refresh();
         }

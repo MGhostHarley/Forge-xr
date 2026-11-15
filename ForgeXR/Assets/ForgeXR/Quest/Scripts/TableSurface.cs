@@ -85,6 +85,33 @@ namespace Forge
             y < headY - minBelowHead * 0.5f && y > headY - maxBelowHead && y > FloorY + minAboveFloor;
 
         /// <summary>Point on the table surface under the piece seen along <paramref name="ray"/>.</summary>
+        [Header("Lifted pieces")]
+        [Tooltip("A piece seen along a ray passing this close (m) to a tracked hand point is placed at the hand, in 3D.")]
+        [SerializeField] float handRayRadius = 0.07f;
+
+        /// <summary>
+        /// Where the piece seen along <paramref name="ray"/> is in 3D: at a tracked hand (palm / index / thumb) when the
+        /// ray passes close to one in front of the table (the piece is lifted, held), otherwise on the table.
+        /// </summary>
+        public bool TryPlace(Ray ray, out Vector3 point, out bool inHand)
+        {
+            inHand = false;
+            var onTable = TryIntersect(ray, out point);
+            var tableT = onTable ? Vector3.Dot(point - ray.origin, ray.direction) : float.PositiveInfinity;
+            var bestDist = handRayRadius;
+            foreach (var hp in ForgeHands.CoverPositions)
+            {
+                var t = Vector3.Dot(hp - ray.origin, ray.direction);
+                if (t < 0.05f || t > tableT - 0.02f) continue; // behind the camera, or at/below the table along this ray
+                var d = Vector3.Distance(ray.GetPoint(t), hp);
+                if (d >= bestDist) continue;
+                bestDist = d;
+                point = ray.GetPoint(t);
+                inHand = true;
+            }
+            return onTable || inHand;
+        }
+
         public bool TryIntersect(Ray ray, out Vector3 tablePoint)
         {
             tablePoint = default;

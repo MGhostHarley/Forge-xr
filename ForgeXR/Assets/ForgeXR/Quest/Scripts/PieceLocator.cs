@@ -88,7 +88,7 @@ namespace Forge
                 if (d.frameId > 0 && d.frameId != frame.frameId && !history.TryGetValue(d.frameId, out source))
                     continue; // computed on a frame older than the pose history: can't place it reliably
                 var ray = source.ImagePointToRay(d.imagePoint);
-                if (!table.TryIntersect(ray, out var p)) continue;
+                if (!table.TryPlace(ray, out var p, out _)) continue;
                 tracker.Report(d.partId, p, d.confidence);
                 if (colorTracker != null && d.imageBox.width > 0f) colorTracker.Learn(d.partId, d.frameId > 0 ? d.frameId : frame.frameId, d.imageBox);
                 placed++;

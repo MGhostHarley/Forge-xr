@@ -91,7 +91,7 @@ namespace Forge
             SetColor(stem, on ? WithAlpha(activeColor, 0.8f) : idleStem);
             if (ring != null) ring.enabled = IsVisible;
             // Stem and name label only on the highlighted spot; idle spots are just the dim ring.
-            if (stem != null) stem.enabled = on && IsVisible;
+            if (stem != null) stem.enabled = IsVisible;
             if (glow != null)
             {
                 glow.enabled = on && IsVisible;
@@ -99,7 +99,7 @@ namespace Forge
             }
             if (labelText != null)
             {
-                labelText.enabled = on && IsVisible;
+                labelText.enabled = IsVisible;
                 labelText.color = on ? activeColor : idleLabel;
                 labelText.fontStyle = on ? FontStyles.Bold : FontStyles.Normal;
             }

@@ -39,7 +39,7 @@ namespace Forge
         class Track
         {
             public PickupSpot spot;
-            public bool everSeen, visible;
+            public bool everSeen, visible, tracked;
             public Vector3 target;
             public float lastSeen = float.NegativeInfinity;
             /// <summary>Seconds the spot has been inside the camera view without a detection.</summary>
@@ -53,13 +53,18 @@ namespace Forge
         float nextSpotScan;
 
         /// <summary>True while the piece is shown (seen recently or within its hold).</summary>
-        public bool IsTracked(string partId) => tracks.TryGetValue(partId, out var t) && t.visible;
+        public bool IsTracked(string partId) => tracks.TryGetValue(partId, out var t) && t.tracked;
+
+        HashSet<string> shownParts; // null = show every tracked part
+
+        /// <summary>Only these parts get a visible ring (the current walkthrough's); others are still tracked.</summary>
+        public void SetShownParts(IEnumerable<string> parts) => shownParts = parts == null ? null : new HashSet<string>(parts);
 
         /// <summary>Current smoothed table position of a tracked piece.</summary>
         public bool TryGetPosition(string partId, out Vector3 position)
         {
             position = default;
-            if (!tracks.TryGetValue(partId, out var t) || !t.visible || t.spot == null) return false;
+            if (!tracks.TryGetValue(partId, out var t) || !t.tracked || t.spot == null) return false;
             position = t.spot.transform.position;
             return true;
         }
@@ -155,8 +160,9 @@ namespace Forge
             var k = smoothingTime > 1e-3f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / smoothingTime) : 1f;
 
 
-            foreach (var t in tracks.Values)
+            foreach (var kv in tracks)
             {
+                var t = kv.Value;
                 if (t.spot == null) continue;
                 // Held until enough classifier answers in a row miss it while in view (OnClassifierAnswer); out-of-frame
                 // pieces are held where they were last seen (the camera follows the head, not the eyes).
@@ -171,7 +177,9 @@ namespace Forge
                 {
                     t.snapNext = true; // lost: next detection snaps instead of sliding across the table
                 }
-                SetVisible(t, tracked && (showIdleSpots || t.spot.IsHighlighted));
+                t.tracked = tracked;
+                var shown = shownParts == null || shownParts.Contains(kv.Key);
+                SetVisible(t, tracked && shown && (showIdleSpots || t.spot.IsHighlighted));
             }
         }
 

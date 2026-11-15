@@ -14,8 +14,9 @@ namespace Forge.EditorTools
         const bool Enabled = true;
         public const string Name = "CloudVision";
         // Request pacing (written to the scene each setup run, so changing these takes effect on the next build).
-        const float MinIntervalSeconds = 2f;
+        const float MinIntervalSeconds = 1f;
         const int RequestTimeoutSeconds = 8;
+        const float CameraFramesPerSecond = 10f;
 
         [ForgeSetupStep(515)]
         public static void InstallCloudVision()
@@ -37,7 +38,17 @@ namespace Forge.EditorTools
 
             // Colour tracking between slow answers, next to PieceTracker/PieceLocator on ForgeRig/CameraPlacement.
             var placement = rig.transform.Find(Setup_CameraPlacement.PlacementName);
-            if (placement != null) ForgeSetupUtil.GetOrAdd<Forge.ColorPieceTracker>(placement.gameObject);
+            if (placement != null)
+            {
+                ForgeSetupUtil.GetOrAdd<Forge.ColorPieceTracker>(placement.gameObject);
+                var source = placement.GetComponent<Forge.CameraFrameSource>();
+                if (source != null)
+                {
+                    var fso = new SerializedObject(source);
+                    fso.FindProperty("framesPerSecond").floatValue = CameraFramesPerSecond; // colour tracking rate
+                    fso.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
 
             // The relay is plain http:// on the laptop (or 127.0.0.1 via adb reverse).
             PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;

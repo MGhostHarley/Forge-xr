@@ -62,7 +62,7 @@ namespace Forge
 
         [Header("Frames handed to the classifier")]
         public const int CaptureSize = 960;
-        [SerializeField] float framesPerSecond = 5f;
+        [SerializeField] float framesPerSecond = 10f;
         [Tooltip("Drop an async conversion that has not finished after this long (s).")]
         [SerializeField] float conversionTimeout = 1f;
         [Tooltip("Editor only: emit blank frames posed like Camera.main when no camera images exist.")]
