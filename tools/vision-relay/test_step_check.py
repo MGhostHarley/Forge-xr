@@ -197,9 +197,16 @@ class Judge(unittest.TestCase):
 
     def test_final_step_flag(self):
         hair = [det("head", 0.4, 0.4, 0.43, 0.43), det("hairpiece", 0.4, 0.37, 0.43, 0.405)]
+        apart = [det("head", 0.4, 0.4, 0.43, 0.43), det("hairpiece", 0.7, 0.7, 0.73, 0.73)]
         j = judge(FakeVlm([True]), FakeLimiter())
-        _, out = feed(j, [hair] * 10, state="driver,step=2,complete=false")
+        _, out = feed(j, [apart] * 3 + [hair] * 10, state="driver,step=2,complete=false")
         self.assertTrue(out["final"])
+
+    def test_no_vlm_skip_when_never_apart(self):
+        # "Start over" with the figure still assembled: the VLM would say yes; never ask before seeing parts apart.
+        vlm = FakeVlm([True])
+        j = judge(vlm, FakeLimiter())
+        self.assertIsNone(feed(j, TOGETHER_SEQ(30))[1])
 
     def test_disabled(self):
         j = judge(FakeVlm([True]), FakeLimiter(), enabled=False)

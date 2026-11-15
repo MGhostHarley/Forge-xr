@@ -320,7 +320,10 @@ class StepJudge:
             busy = self.vlm_busy_since is not None and t - self.vlm_busy_since < cfg["vlm_timeout_seconds"] + 5
             if self.vlm_busy_since is not None and not busy:
                 self.vlm_busy_since = None  # a lost call: give up on it
-            if held >= cfg["hold_seconds"] and not busy and self._vlm_usable(cfg, t) \
+            # Like the fallback, only ask once the parts were seen apart in this step: after "Start over" with the
+            # figure still assembled, the VLM would truthfully say yes and skip every step.
+            apart_ok = self.seen_apart or not cfg["fallback_require_apart"]
+            if held >= cfg["hold_seconds"] and not busy and apart_ok and self._vlm_usable(cfg, t) \
                     and t - self.vlm_last >= cfg["vlm_min_gap_seconds"] and self.last_cand[1]:
                 if self.limiter is None or self.limiter.try_acquire():
                     self.vlm_throttled = False
