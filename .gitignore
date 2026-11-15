@@ -31,3 +31,16 @@ ForgeXR/.utmp/
 *.aab
 *.unitypackage
 crashlytics-build.properties
+
+# Camera captures / relay logs / training data: never commit (private spaces)
+forge-captures/
+relay-log*/
+labels-*/
+step-crops/
+forge_frames/
+tools/**/*.jpg
+tools/**/*.jpeg
+tools/**/*.png
+tools/**/*.pt
+tools/**/*.onnx
+runs/
