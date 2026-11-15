@@ -114,7 +114,25 @@ class NvidiaDetector:
         return out, content
 
 
-def make_handler(detector, log_dir):
+class RateLimiter:
+    """Sliding-window limit on upstream API calls (NVIDIA free tier: 40 requests/minute)."""
+
+    def __init__(self, per_minute):
+        self.per_minute = per_minute
+        self.calls = []
+        self.lock = threading.Lock()
+
+    def try_acquire(self):
+        now = time.time()
+        with self.lock:
+            self.calls = [t for t in self.calls if now - t < 60.0]
+            if self.per_minute > 0 and len(self.calls) >= self.per_minute:
+                return False
+            self.calls.append(now)
+            return True
+
+
+def make_handler(detector, log_dir, limiter):
     lock = threading.Lock()
     counter = {"n": 0}
 
@@ -141,6 +159,11 @@ def make_handler(detector, log_dir):
             jpeg = self.rfile.read(length)
             frame_id = self.headers.get("X-Frame-Id", "?")
             t0 = time.time()
+            if not limiter.try_acquire():
+                # Over the upstream cap: answer at once with an error (the Quest backs off, boxes are kept).
+                self._send(200, {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"})
+                print(f"[relay] frame {frame_id}: skipped, over {limiter.per_minute}/min", flush=True)
+                return
             try:
                 dets, raw = detector.detect(jpeg)
                 err = None
@@ -172,13 +195,14 @@ def main():
     ap.add_argument("--log-dir", default=str(pathlib.Path.home() / "forge-relay-log"),
                     help="save each frame + answer here (review / training data)")
     ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--max-per-minute", type=int, default=38, help="upstream API calls per minute (0 = no limit)")
     a = ap.parse_args()
 
     detector = NvidiaDetector(nvidia_key())
     log_dir = None if a.no_log else pathlib.Path(a.log_dir).expanduser()
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer((a.host, a.port), make_handler(detector, log_dir))
+    server = ThreadingHTTPServer((a.host, a.port), make_handler(detector, log_dir, RateLimiter(a.max_per_minute)))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
     try:
         server.serve_forever()
