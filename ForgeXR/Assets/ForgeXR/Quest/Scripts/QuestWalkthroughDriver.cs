@@ -83,6 +83,10 @@ namespace Forge
         InputAction toggleAction;
 
         public Flow CurrentFlow => flow;
+        internal int VoiceRevision { get; private set; }
+        internal int VoiceStep => Active.StepIndex;
+        internal string VoiceInstruction => Active.CurrentInstruction;
+        internal string VoicePart => Active.CurrentPart;
         ForgeXR.DesktopWalkthrough Active => flow == Flow.Wheel ? wheel : driver;
         int ActiveStepCount => flow == Flow.Wheel ? wheelStepCount : driverStepCount;
         List<StepTargets> ActiveSteps => flow == Flow.Wheel ? wheelSteps : driverSteps;
@@ -167,7 +171,11 @@ namespace Forge
             input.onReset.RemoveListener(OnReset);
         }
 
-        void Start() => Select(Flow.Driver, "start");
+        void Start()
+        {
+            Select(Flow.Driver, "start");
+            gameObject.AddComponent<VoiceAssistant>().Initialize(this);
+        }
 
         void Update()
         {
@@ -245,6 +253,7 @@ namespace Forge
 
         void Refresh()
         {
+            VoiceRevision++;
             var active = Active;
             var complete = active.IsComplete;
             var step = active.StepIndex;

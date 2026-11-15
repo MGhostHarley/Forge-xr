@@ -164,7 +164,7 @@ namespace Forge
             snapshots.Enqueue((frame.frameId, px, sw, sh));
         }
 
-        byte[] Encode(CameraFrame frame)
+        internal byte[] Encode(CameraFrame frame)
         {
             int w = frame.width, h = frame.height;
             if (tex == null || tex.width != w || tex.height != h)

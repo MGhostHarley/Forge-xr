@@ -86,3 +86,18 @@ Step thresholds: `tools/vision-relay/step_config.json` (re-read on change).
 | need to finish a step anyway | pinch Next, or `curl -X POST 127.0.0.1:8787/step/force` |
 
 Diagnostics on the headset: `adb logcat -s Unity | grep ForgeDiag` (TRACKS, ANSWER, STEP, CONFIG lines).
+
+## Voice assistant
+
+Export `OPENAI_API_KEY` in the relay's shell before starting it. This is optional and affects only voice.
+Build and install the Quest app from this branch and use the existing USB relay setup above.
+Voice uses the left Touch controller and is available over the USB relay.
+
+- **Hold the left grip** to ask a question. Hold briefly before speaking, then release to hear the answer.
+  Allow microphone access when prompted, then hold again. The app sends a short recording and,
+  if available, one passthrough frame to the relay. The relay uses OpenAI for transcription and
+  speech synthesis, and sends the transcript and frame to the answer model for questions that need it.
+- **Tap left grip** to hear the current instruction offline. Failed voice requests also play this clip.
+  In the Unity Editor, use **V** for the grip control or **H** to hear the step.
+- Voice responses are AI-generated. Use the existing walkthrough controls to move through the build.
+  A step change cancels a pending question or stops the reply.

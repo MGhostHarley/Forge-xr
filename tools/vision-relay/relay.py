@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))  # python -I does not put the script's folder on sys.path
 import step_check  # noqa: E402  (automatic step completion: geometry + VLM yes/no)
+import voice  # noqa: E402  (optional voice questions)
 CONFIG_PATH = HERE / "quest_config.json"  # live Quest tuning, served at /config (Forge.RemoteConfig polls it)
 
 # Part-selection policy (laptop side). The Quest reports X-State "driver,step=N,complete=bool".
@@ -426,6 +427,9 @@ def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
                 return None
 
         def do_POST(self):
+            if self.path == "/ask":
+                voice.serve(self)
+                return
             if self.path.startswith("/step/reset"):
                 if judge:
                     judge.reset()
