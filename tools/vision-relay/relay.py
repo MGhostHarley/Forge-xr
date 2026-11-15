@@ -180,6 +180,94 @@ class LocalYoloDetector:
         return out, json.dumps([[p, round(c, 3)] for p, (c, _) in best.items()])
 
 
+class HybridDetector:
+    """Local YOLO every request + a background Nemotron check every few seconds, for unseen spaces.
+
+    Nemotron (never trained on our scene) finds parts the local model misses. Its boxes come from an older frame, so
+    each one is relocated in the current frame by template matching (OpenCV) near the old box before it is added;
+    a part is kept for at most `ttl` seconds and only while the match stays good. If NVIDIA is throttled or down,
+    this is just the local detector."""
+
+    def __init__(self, local, nvidia, limiter, every=3.0, ttl=4.0, min_match=0.55):
+        import cv2, numpy  # noqa: F401  (ultralytics venv has both)
+        self.local, self.nvidia, self.limiter = local, nvidia, limiter
+        self.every, self.ttl, self.min_match = every, ttl, min_match
+        self.model = local.model + "+" + nvidia.model.split("/")[-1]
+        self._lock = threading.Lock()
+        self._busy = False
+        self._last_call = 0.0
+        self.extra = {}  # part -> {"box": [x0,y0,x1,y1], "tmpl": gray crop, "t": time found}
+
+    @staticmethod
+    def _gray(jpeg_bytes):
+        import cv2, numpy as np
+        return cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
+
+    def _cloud(self, jpeg_bytes, parts):
+        try:
+            dets, _ = self.nvidia.detect(jpeg_bytes, parts)
+        except Exception as e:  # noqa: BLE001
+            if "429" in str(e):
+                self.limiter.note_rate_limited()
+            dets = []
+        g = self._gray(jpeg_bytes)
+        h, w = g.shape
+        now = time.time()
+        with self._lock:
+            for d in dets:
+                x0, y0, x1, y1 = int(d["x0"] * w), int(d["y0"] * h), int(d["x1"] * w), int(d["y1"] * h)
+                if x1 - x0 < 6 or y1 - y0 < 6:
+                    continue
+                self.extra[d["partId"]] = {"box": [d["x0"], d["y0"], d["x1"], d["y1"]],
+                                           "tmpl": g[y0:y1, x0:x1].copy(), "t": now}
+            self._busy = False
+
+    def _relocate(self, g, e):
+        import cv2
+        h, w = g.shape
+        x0, y0, x1, y1 = e["box"]
+        bw, bh = (x1 - x0) * w, (y1 - y0) * h
+        cx, cy = (x0 + x1) / 2 * w, (y0 + y1) / 2 * h
+        sx0, sy0 = int(max(0, cx - 2 * bw)), int(max(0, cy - 2 * bh))
+        sx1, sy1 = int(min(w, cx + 2 * bw)), int(min(h, cy + 2 * bh))
+        win, t = g[sy0:sy1, sx0:sx1], e["tmpl"]
+        if win.shape[0] < t.shape[0] or win.shape[1] < t.shape[1]:
+            return None
+        res = cv2.matchTemplate(win, t, cv2.TM_CCOEFF_NORMED)
+        _, score, _, (mx, my) = cv2.minMaxLoc(res)
+        if score < self.min_match:
+            return None
+        nx0, ny0 = (sx0 + mx) / w, (sy0 + my) / h
+        return [nx0, ny0, nx0 + t.shape[1] / w, ny0 + t.shape[0] / h], score
+
+    def detect(self, jpeg_bytes, parts=None):
+        out, raw = self.local.detect(jpeg_bytes, parts)
+        now = time.time()
+        with self._lock:
+            start = (not self._busy and now - self._last_call >= self.every and self.limiter.try_acquire())
+            if start:
+                self._busy, self._last_call = True, now
+        if start:
+            threading.Thread(target=self._cloud, args=(jpeg_bytes, parts), daemon=True).start()
+        have = {d["partId"] for d in out}
+        wanted = set(p for p in (parts or PARTS) if p in PARTS) or set(PARTS)
+        with self._lock:
+            extra = {p: e for p, e in self.extra.items() if now - e["t"] <= self.ttl}
+            self.extra = extra
+        if extra.keys() - have:
+            g = self._gray(jpeg_bytes)
+            for p, e in extra.items():
+                if p in have or p not in wanted:
+                    continue
+                found = self._relocate(g, e)
+                if found:
+                    (bx0, by0, bx1, by1), s = found
+                    e["box"] = [bx0, by0, bx1, by1]  # follow it frame to frame
+                    out.append({"partId": p, "x0": bx0, "y0": by0, "x1": bx1, "y1": by1,
+                                "confidence": 0.8, "score": round(s, 3), "via": "nemotron"})
+        return out, raw
+
+
 class RateLimiter:
     """Sliding-window limit on upstream API calls, plus a cooldown after the API answers 429 (its real limit is
     stricter than the advertised 40/min)."""
@@ -419,19 +507,24 @@ def main():
                     help="save each frame + answer here (review / training data)")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--max-per-minute", type=int, default=25, help="upstream API calls per minute (0 = no limit)")
-    ap.add_argument("--detector", choices=["nvidia", "local"], default="nvidia")
+    ap.add_argument("--detector", choices=["nvidia", "local", "hybrid"], default="nvidia")
     ap.add_argument("--weights", default="", help="local: path to the fine-tuned YOLO .pt")
     ap.add_argument("--local-conf", type=float, default=0.3, help="local: min YOLO score")
+    ap.add_argument("--hybrid-every", type=float, default=4.0, help="hybrid: seconds between background Nemotron checks")
     ap.add_argument("--log-every", type=int, default=1, help="save every Nth frame (local runs fast; saves disk)")
     ap.add_argument("--no-step", action="store_true", help="turn off automatic step completion (step_check.py)")
     ap.add_argument("--step-vlm-per-minute", type=int, default=6,
                     help="VLM yes/no confirmations per minute (local detector; with --detector nvidia they share its cap)")
     a = ap.parse_args()
 
-    if a.detector == "local":
+    if a.detector in ("local", "hybrid"):
         detector = LocalYoloDetector(a.weights, conf=a.local_conf)
-        a.max_per_minute = 0  # no upstream API
         key = try_nvidia_key()
+        if a.detector == "hybrid" and key:
+            # Own cap for the background checks (+ 429 cooldown); local answers are never rate limited.
+            detector = HybridDetector(detector, NvidiaDetector(key), RateLimiter(int(60 / a.hybrid_every) + 1),
+                                      every=a.hybrid_every)
+        a.max_per_minute = 0  # relay-level cap off: the local model answers every request
     else:
         key = nvidia_key()
         detector = NvidiaDetector(key)
