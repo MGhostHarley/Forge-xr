@@ -40,7 +40,7 @@ namespace Forge
         [SerializeField] PassthroughCameraModel cameraModel;
 
         [Header("Frames handed to the classifier")]
-        public const int CaptureSize = 640;
+        public const int CaptureSize = 960;
         [SerializeField] float framesPerSecond = 5f;
         [Tooltip("Drop an async conversion that has not finished after this long (s).")]
         [SerializeField] float conversionTimeout = 1f;

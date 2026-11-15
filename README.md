@@ -16,6 +16,6 @@ Hackathon project for Meta Quest 3/3S.
 
 Open `ForgeXR/` and run **Forge → Setup + Build Quest APK** to generate the scene and build `ForgeXR/Builds/ForgeXR-Capture.apk`. Its package ID is `com.forge.forgexr.capture`. Install with `adb install -r ForgeXR/Builds/ForgeXR-Capture.apk`.
 
-Open **ForgeXR Capture**, grant camera access, and pinch **Save frame** below the instructions to save one clean 640 × 640 passthrough PNG. The button reports the number saved or prompts you to retry. Fully close and relaunch the app for a new session folder. Capture **Driver** and **Chassis and Wheel** in separate sessions.
+Open **ForgeXR Capture**, grant camera access, and pinch **Save frame** below the instructions to save one clean 960 × 960 passthrough PNG. The button reports the number saved or prompts you to retry. Fully close and relaunch the app for a new session folder. Capture **Driver** and **Chassis and Wheel** in separate sessions.
 
 Export the sessions with `adb pull /sdcard/Android/data/com.forge.forgexr.capture/files/forge_frames ./forge_frames`.
