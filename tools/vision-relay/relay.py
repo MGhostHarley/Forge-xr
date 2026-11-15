@@ -81,9 +81,11 @@ class NvidiaDetector:
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=90)
         body = {
-            "model": self.model, "max_tokens": 4000, "temperature": 0,
+            "model": self.model, "max_tokens": 1500, "temperature": 0,
+            # Reasoning off: ~2 s instead of 10-30 s, and the answer is never starved by reasoning tokens
+            # (with reasoning on, the reply was often empty: finish_reason=length).
+            "chat_template_kwargs": {"enable_thinking": False},
             "messages": [
-                {"role": "system", "content": "detailed thinking off"},
                 {"role": "user", "content": [
                     {"type": "text", "text": PROMPT},
                     {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}},

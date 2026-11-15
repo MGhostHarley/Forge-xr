@@ -17,6 +17,8 @@ namespace Forge
         [SerializeField] PieceClassifierBehaviour classifier;
         [SerializeField] TableSurface table;
         [SerializeField] PieceTracker tracker;
+        [Tooltip("Optional: learns colours from classifier boxes and follows pieces between answers.")]
+        [SerializeField] ColorPieceTracker colorTracker;
         [SerializeField] float statusLogInterval = 2f;
 
         [Tooltip("Camera poses of recent frames, for detections that arrive late (slow/cloud classifiers).")]
@@ -35,6 +37,7 @@ namespace Forge
             if (frameSource == null) frameSource = GetComponent<CameraFrameSource>();
             if (table == null) table = GetComponent<TableSurface>();
             if (tracker == null) tracker = GetComponent<PieceTracker>();
+            if (colorTracker == null) colorTracker = GetComponent<ColorPieceTracker>();
         }
 
         void OnEnable() { if (frameSource != null) frameSource.FrameReady += OnFrame; }
@@ -87,6 +90,7 @@ namespace Forge
                 var ray = source.ImagePointToRay(d.imagePoint);
                 if (!table.TryIntersect(ray, out var p)) continue;
                 tracker.Report(d.partId, p, d.confidence);
+                if (colorTracker != null && d.imageBox.width > 0f) colorTracker.Learn(d.partId, d.frameId > 0 ? d.frameId : frame.frameId, d.imageBox);
                 placed++;
                 lastPlacement = $"{d.partId}@{p:F3} img={d.imagePoint:F2} conf={d.confidence:F2} table={table.LastSource}";
             }
@@ -98,7 +102,8 @@ namespace Forge
             nextStatus = Time.unscaledTime + statusLogInterval;
             Debug.Log($"[Forge] Placement: camera='{(frameSource != null ? frameSource.Status : "none")}' frames={frames} " +
                       $"detections={detections} placed={placed} classifier={(classifier != null ? classifier.GetType().Name : "none")} " +
-                      $"tableY={(table != null ? table.TableHeight.ToString("F3") : "-")} last={lastPlacement}");
+                      $"tableY={(table != null ? table.TableHeight.ToString("F3") : "-")} last={lastPlacement}" +
+                      (colorTracker != null ? $" {colorTracker.Status}" : ""));
         }
     }
 }

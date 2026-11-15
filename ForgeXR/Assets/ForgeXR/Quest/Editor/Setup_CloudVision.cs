@@ -28,6 +28,10 @@ namespace Forge.EditorTools
             var go = ForgeSetupUtil.GetOrCreateChild(rig.transform, Name);
             ForgeSetupUtil.GetOrAdd<Forge.CloudVisionClassifier>(go);
 
+            // Colour tracking between slow answers, next to PieceTracker/PieceLocator on ForgeRig/CameraPlacement.
+            var placement = rig.transform.Find(Setup_CameraPlacement.PlacementName);
+            if (placement != null) ForgeSetupUtil.GetOrAdd<Forge.ColorPieceTracker>(placement.gameObject);
+
             // The relay is plain http:// on the laptop (or 127.0.0.1 via adb reverse).
             PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
             PlayerSettings.Android.forceInternetPermission = true;

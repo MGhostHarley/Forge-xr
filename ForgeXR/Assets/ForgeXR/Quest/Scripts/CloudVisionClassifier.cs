@@ -35,6 +35,9 @@ namespace Forge
         [Serializable] class RelayResponse { public RelayDetection[] detections; public float seconds; public string model; public string error; }
 
         readonly List<PieceDetection> pending = new();
+        // Downsampled copies of recently sent frames, so ColorPieceTracker can learn colours from the exact frame.
+        const int SnapshotSize = 320, SnapshotCount = 3;
+        readonly Queue<(int id, Color32[] px, int w, int h)> snapshots = new();
         bool busy, hasPending;
         float nextRequest, nextStatus;
         Texture2D tex;
@@ -80,8 +83,34 @@ namespace Forge
             {
                 nextRequest = Time.unscaledTime + minInterval;
                 var jpg = Encode(frame);
-                if (jpg != null) StartCoroutine(Send(jpg, frame.frameId));
+                if (jpg != null)
+                {
+                    Snapshot(frame);
+                    StartCoroutine(Send(jpg, frame.frameId));
+                }
             }
+        }
+
+        /// <summary>Pixels (row 0 = top) of a frame this classifier sent, downsampled; false if no longer kept.</summary>
+        public bool TryGetSentFrame(int frameId, out Color32[] pixels, out int width, out int height)
+        {
+            foreach (var s in snapshots)
+                if (s.id == frameId) { pixels = s.px; width = s.w; height = s.h; return true; }
+            pixels = null; width = height = 0;
+            return false;
+        }
+
+        void Snapshot(CameraFrame frame)
+        {
+            int sw = Mathf.Min(SnapshotSize, frame.width), sh = Mathf.Min(SnapshotSize, frame.height);
+            var px = snapshots.Count >= SnapshotCount ? snapshots.Dequeue().px : null;
+            if (px == null || px.Length != sw * sh) px = new Color32[sw * sh];
+            for (var y = 0; y < sh; y++)
+            {
+                var row = y * frame.height / sh * frame.width;
+                for (var x = 0; x < sw; x++) px[y * sw + x] = frame.pixels[row + x * frame.width / sw];
+            }
+            snapshots.Enqueue((frame.frameId, px, sw, sh));
         }
 
         byte[] Encode(CameraFrame frame)
