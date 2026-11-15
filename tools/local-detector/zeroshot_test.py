@@ -54,9 +54,12 @@ def main():
 
     from ultralytics import YOLO  # imported late so --help works without the venv
 
-    ids = SETS[a.parts]
     model = YOLO(a.model)
-    model.set_classes([PROMPTS[i] for i in ids])
+    if "world" in pathlib.Path(a.model).name or "yoloe" in pathlib.Path(a.model).name:
+        ids = SETS[a.parts]
+        model.set_classes([PROMPTS[i] for i in ids])  # open-vocabulary: prompt with text
+    else:
+        ids = [model.names[i] for i in range(len(model.names))]  # fine-tuned: fixed classes
 
     files = []
     for f in a.frames:
@@ -79,6 +82,8 @@ def main():
         dets = []
         for b in r.boxes:
             cls = int(b.cls.item())
+            if ids[cls] not in SETS[a.parts]:
+                continue
             x0, y0, x1, y1 = (b.xyxyn[0].tolist())
             dets.append((ids[cls], float(b.conf.item()), (x0, y0, x1, y1)))
         best = {}

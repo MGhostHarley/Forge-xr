@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn the relay log (Quest frames + Nemotron answers) into a YOLO dataset of pseudo-labels.
 
-  python3 -I tools/local-detector/build_dataset.py RELAY_LOG_DIR OUT_DIR [--val 0.15] [--negatives 40]
+  python3 -I tools/local-detector/build_dataset.py OUT_DIR RELAY_LOG_DIR [MORE_LABEL_DIRS...] [--val 0.15]
 
 Images are symlinked (no disk copy). Frames with an error are skipped. Boxes larger than --max-side of the image are
 dropped (Nemotron sometimes boxes a whole hand). A few frames with an empty answer are kept as negatives.
@@ -14,16 +14,19 @@ CLASSES = ["legs", "torso", "head", "hairpiece", "tire", "rim", "axle-pin"]  # o
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("log")
     ap.add_argument("out")
+    ap.add_argument("logs", nargs="+", help="relay-log style dirs (jpg + json); later dirs go to train only")
     ap.add_argument("--val", type=float, default=0.15)
     ap.add_argument("--negatives", type=int, default=40)
     ap.add_argument("--max-side", type=float, default=0.35)
     a = ap.parse_args()
 
-    log, out = pathlib.Path(a.log).resolve(), pathlib.Path(a.out)
-    pos, neg = [], []
-    for j in sorted(log.glob("*.json"), key=lambda p: p.stat().st_mtime):
+    out = pathlib.Path(a.out)
+    pos, neg, extra = [], [], []
+    jsons = []
+    for k, log in enumerate(a.logs):
+        jsons += [(k, j) for j in sorted(pathlib.Path(log).resolve().glob("*.json"), key=lambda p: p.stat().st_mtime)]
+    for k, j in jsons:
         img = j.with_suffix(".jpg")
         try:
             d = json.loads(j.read_text())
@@ -40,12 +43,15 @@ def main():
             if w <= 0.005 or h <= 0.005 or max(w, h) > a.max_side:
                 continue
             lines.append(f"{CLASSES.index(det['partId'])} {(x0 + x1) / 2:.5f} {(y0 + y1) / 2:.5f} {w:.5f} {h:.5f}")
-        (pos if lines else neg).append((img, lines))
+        if k > 0 and lines:
+            extra.append((img.resolve(), lines))
+        else:
+            (pos if lines else neg).append((img.resolve(), lines))
 
     random.seed(0)
     neg = random.sample(neg, min(a.negatives, len(neg)))
     nval = max(1, int(len(pos) * a.val))
-    splits = {"train": pos[:-nval] + neg, "val": pos[-nval:]}
+    splits = {"train": pos[:-nval] + neg + extra, "val": pos[-nval:]}
     for split, items in splits.items():
         (out / "images" / split).mkdir(parents=True, exist_ok=True)
         (out / "labels" / split).mkdir(parents=True, exist_ok=True)
