@@ -24,6 +24,9 @@ namespace Forge
         [SerializeField] float smoothingTime = 0.15f;
         [SerializeField] float jumpDistance = 0.12f;
         [SerializeField] int jumpConfirmFrames = 2;
+        [Tooltip("Detections at or above this confidence (the classifier) move a piece immediately; only weaker ones "
+                 + "(colour tracking) need jumpConfirmFrames agreeing reports for a big jump.")]
+        [SerializeField, Range(0f, 1f)] float trustedConfidence = 0.75f;
         [Tooltip("Hide a piece after this many classifier answers in a row miss it while its spot is in view.")]
         [SerializeField] int maxMissedAnswers = 3;
         [Tooltip("...or this many while a tracked hand is near it (hand covering the piece).")]
@@ -136,7 +139,7 @@ namespace Forge
             {
                 if (t.pendingCount > 0 && Vector3.Distance(tablePoint, t.pending) < jumpDistance * 0.5f) t.pendingCount++;
                 else { t.pending = tablePoint; t.pendingCount = 1; }
-                if (t.pendingCount < jumpConfirmFrames) return; // unconfirmed jump: ignore, keep holding
+                if (confidence < trustedConfidence && t.pendingCount < jumpConfirmFrames) return; // unconfirmed jump: hold
                 t.target = tablePoint;
                 t.pendingCount = 0;
             }

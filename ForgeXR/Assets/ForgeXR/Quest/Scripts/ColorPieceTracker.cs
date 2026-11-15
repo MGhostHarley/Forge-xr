@@ -27,7 +27,9 @@ namespace Forge
         [Tooltip("Search window = box size x this.")]
         [SerializeField] float searchScale = 2.5f;
         [Tooltip("Stop colour-tracking a piece when its match falls below this fraction of the learned match.")]
-        [SerializeField, Range(0.05f, 1f)] float minMatch = 0.35f;
+        [SerializeField, Range(0.05f, 1f)] float minMatch = 0.2f;
+        [Tooltip("Pause colour tracking of a piece only after this many weak frames in a row (~10 fps).")]
+        [SerializeField] int maxWeakFrames = 10;
         [Tooltip("Forget colour models older than this (s) without a fresh classifier detection.")]
         [SerializeField] float modelLifetime = 120f;
         [SerializeField] int meanShiftIterations = 6;
@@ -44,6 +46,7 @@ namespace Forge
             public float learnedMatch;               // mean weight inside the box at learn time
             public float learnedAt;
             public bool active;
+            public int weakFrames;
         }
 
         readonly Dictionary<string, Model> models = new();
@@ -109,6 +112,7 @@ namespace Forge
             m.learnedMatch = MeanWeight(m, px, w, h, inner);
             m.learnedAt = Time.unscaledTime;
             m.active = m.learnedMatch > 0.05f;
+            m.weakFrames = 0;
         }
 
         // ------------------------------------------------------------------ track
@@ -150,7 +154,14 @@ namespace Forge
 
                 var boxPx = new RectInt((int)(c.x - half.x), (int)(c.y - half.y), (int)(half.x * 2), (int)(half.y * 2));
                 var match = MeanWeight(m, frame.pixels, w, h, Clip(boxPx, w, h));
-                if (match < minMatch * m.learnedMatch) { m.active = false; lost++; continue; } // let the classifier re-find it
+                if (match < minMatch * m.learnedMatch)
+                {
+                    // Glare / brief occlusion: skip this frame; only pause after a run of weak frames. The model is kept,
+                    // so tracking resumes as soon as the piece matches again (or the classifier re-learns it).
+                    if (++m.weakFrames >= maxWeakFrames) { m.weakFrames = 0; lost++; }
+                    continue;
+                }
+                m.weakFrames = 0;
 
                 var ray = info.ImagePointToRay(new Vector2(c.x / w, c.y / h));
                 if (!table.TryPlace(ray, out var p, out var inHand)) continue;
