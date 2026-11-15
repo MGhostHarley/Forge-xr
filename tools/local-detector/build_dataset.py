@@ -19,6 +19,8 @@ def main():
     ap.add_argument("--val", type=float, default=0.15)
     ap.add_argument("--negatives", type=int, default=40)
     ap.add_argument("--max-side", type=float, default=0.35)
+    ap.add_argument("--drop-frames-with", default="", help="comma list: skip frames that have any of these labels")
+    ap.add_argument("--ignore", default="", help="comma list: drop these labels' boxes (frame kept)")
     a = ap.parse_args()
 
     out = pathlib.Path(a.out)
@@ -34,9 +36,13 @@ def main():
             continue
         if d.get("error") or not img.exists():
             continue
+        drop = {p for p in a.drop_frames_with.split(",") if p}
+        ignore = {p for p in a.ignore.split(",") if p}
+        if d.get("via") != "self" and any(det.get("partId") in drop for det in d.get("detections", [])):
+            continue
         lines = []
         for det in d.get("detections", []):
-            if det.get("partId") not in CLASSES:
+            if det.get("partId") not in CLASSES or (d.get("via") != "self" and det.get("partId") in ignore):
                 continue
             x0, y0, x1, y1 = (min(1, max(0, float(det[k]))) for k in ("x0", "y0", "x1", "y1"))
             w, h = x1 - x0, y1 - y0
