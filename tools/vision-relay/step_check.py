@@ -322,7 +322,9 @@ class StepJudge:
                 self.vlm_busy_since = None  # a lost call: give up on it
             # Like the fallback, only ask once the parts were seen apart in this step: after "Start over" with the
             # figure still assembled, the VLM would truthfully say yes and skip every step.
-            apart_ok = self.seen_apart or not cfg["fallback_require_apart"]
+            # Only the first step needs it (a later step is reached by completing the one before, so its parts
+            # cannot already be joined; the hairpiece is rarely detected while loose, which blocked step 3).
+            apart_ok = self.seen_apart or not cfg["fallback_require_apart"] or step > 0
             if held >= cfg["hold_seconds"] and not busy and apart_ok and self._vlm_usable(cfg, t) \
                     and t - self.vlm_last >= cfg["vlm_min_gap_seconds"] and self.last_cand[1]:
                 if self.limiter is None or self.limiter.try_acquire():
@@ -342,7 +344,7 @@ class StepJudge:
             if held >= cfg["fallback_hold_seconds"] and self._fallback_allowed(cfg, t):
                 window = [h for tt, h in self.hist if tt >= t - cfg["fallback_hold_seconds"]]
                 ratio = sum(window) / max(1, len(window))
-                if ratio >= cfg["fallback_ratio"] and (self.seen_apart or not cfg["fallback_require_apart"]):
+                if ratio >= cfg["fallback_ratio"] and apart_ok:
                     self._confirm(rule, advance, flow, step, "geometry")
                     return dict(self.confirmed)
                 self.status_text += f" | fallback waits (ratio {ratio:.2f}, apart={self.seen_apart})"

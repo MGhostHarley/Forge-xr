@@ -136,6 +136,12 @@ namespace Forge.EditorTools
             camera.backgroundColor = new Color(0f, 0f, 0f, 0f);
             camera.GetUniversalAdditionalCameraData().renderPostProcessing = false;
 
+            // Exactly one AudioListener, on the head camera (without it no sound plays, e.g. the step chime).
+            foreach (var l in UnityEngine.Object.FindObjectsByType<AudioListener>(FindObjectsInactive.Include,
+                         FindObjectsSortMode.None))
+                if (l.gameObject != camera.gameObject) UnityEngine.Object.DestroyImmediate(l);
+            ForgeSetupUtil.GetOrAdd<AudioListener>(camera.gameObject).enabled = true;
+
             EditorUtility.SetDirty(camera);
         }
 

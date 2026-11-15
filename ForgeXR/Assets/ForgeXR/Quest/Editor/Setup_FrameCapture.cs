@@ -10,7 +10,7 @@ namespace Forge.EditorTools
     /// </summary>
     public static class Setup_FrameCapture
     {
-        const bool Enabled = true;
+        const bool Enabled = false; // demo build: no "Save frame" button (data collection is done)
         public const string Name = "FrameCapture";
         public const string ButtonName = "SaveFrameButton";
 

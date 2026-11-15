@@ -30,7 +30,7 @@ namespace Forge
         [SerializeField] float advanceDelay = 1f;
         [Tooltip("Seconds between Next presses when one event completes several steps (> NextInput debounce 0.3 s).")]
         [SerializeField] float multiAdvanceGap = 0.45f;
-        [SerializeField, Range(0f, 1f)] float volume = 0.8f;
+        [SerializeField, Range(0f, 1f)] float volume = 1f;
         [SerializeField] int burstCount = 60;
         [SerializeField] int finalBurstCount = 150;
         [Tooltip("Confetti starts this far (m) above the piece.")]
@@ -61,6 +61,34 @@ namespace Forge
             if (confetti != null) ConfigureConfetti(confetti);
             chime = BuildChime(false);
             finalChime = BuildChime(true);
+        }
+
+        System.Collections.IEnumerator Start()
+        {
+            // Make sure sound can be heard: one ENABLED AudioListener on the head camera.
+            var cam = Camera.main;
+            var listeners = FindObjectsByType<AudioListener>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var enabledCount = 0;
+            foreach (var l in listeners) if (l.enabled && l.gameObject.activeInHierarchy) enabledCount++;
+            if (enabledCount == 0 && cam != null)
+            {
+                var l = cam.GetComponent<AudioListener>() ?? cam.gameObject.AddComponent<AudioListener>();
+                l.enabled = true;
+            }
+            AudioListener.pause = false;
+            AudioListener.volume = 1f;
+            if (audioSource != null)
+            {
+                audioSource.enabled = true;
+                audioSource.mute = false;
+                audioSource.spatialBlend = 0f; // plain 2D: always audible
+            }
+            ForgeLog.Diag($"AUDIO listeners={listeners.Length} enabled={enabledCount} cam={(cam != null ? cam.name : "none")} " +
+                          $"output={AudioSettings.outputSampleRate}Hz dsp={AudioSettings.GetConfiguration().dspBufferSize}");
+            // Startup test chime so the sound can be checked without assembling anything.
+            yield return new WaitForSecondsRealtime(2f);
+            if (audioSource != null && chime != null) audioSource.PlayOneShot(chime, volume);
+            ForgeLog.Diag("AUDIO startup chime played");
         }
 
         void OnEnable()
@@ -161,7 +189,11 @@ namespace Forge
             {
                 var clip = final ? finalChime : chime;
                 if (clip != null) audioSource.PlayOneShot(clip, volume);
+                ForgeLog.Diag($"CHIME clip={(clip != null ? clip.name : "null")} vol={volume:F2} " +
+                              $"src={(audioSource.enabled && audioSource.gameObject.activeInHierarchy)} " +
+                              $"listener={FindAnyObjectByType<AudioListener>() != null}");
             }
+            else ForgeLog.Diag("CHIME no AudioSource");
             if (confetti != null)
             {
                 confetti.transform.position = pos + Vector3.up * burstHeight;
@@ -261,6 +293,11 @@ namespace Forge
                     data[i] += 0.2f * env * s;
                 }
             }
+            // Normalise to 90% of full scale: headset speakers in a room need a loud chime.
+            var peak = 0f;
+            foreach (var v in data) peak = Mathf.Max(peak, Mathf.Abs(v));
+            if (peak > 1e-4f)
+                for (var i = 0; i < len; i++) data[i] *= 0.9f / peak;
             var clip = AudioClip.Create(final ? "ForgeChimeFinal" : "ForgeChime", len, 1, rate, false);
             clip.SetData(data, 0);
             return clip;

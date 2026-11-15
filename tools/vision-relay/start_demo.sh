@@ -35,7 +35,13 @@ for _ in $(seq 1 60); do curl -s 127.0.0.1:8787/health >/dev/null && break; slee
 curl -s 127.0.0.1:8787/health; echo
 
 echo "== app"
+# Launch only while the headset is awake (on a head): Horizon mutes the audio of an app launched while asleep.
+until adb shell dumpsys power 2>/dev/null | grep -q "mWakefulness=Awake"; do
+  echo "   put the headset on (it is asleep)..."; sleep 2
+done
 adb shell am force-stop com.forge.forgexr.capture >/dev/null 2>&1   # it holds the camera
+adb shell am force-stop com.forge.forgexr >/dev/null 2>&1           # fresh start = unmuted audio
 adb shell monkey -p com.forge.forgexr -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+echo "   you should hear a test chime ~2 s after the app appears"
 echo "launched. Live view: http://127.0.0.1:8787/review   Pre-flight: $HERE/preflight.sh"
 wait $RELAY

@@ -25,11 +25,15 @@ namespace Forge.EditorTools
             var rig = ForgeSetupUtil.GetOrCreateRoot(ForgeScene.RigRoot);
             var go = ForgeSetupUtil.GetOrCreateChild(rig.transform, Name);
             var celebration = ForgeSetupUtil.GetOrAdd<StepCelebration>(go);
+            var celSo = new SerializedObject(celebration);
+            celSo.FindProperty("volume").floatValue = 1f;
+            celSo.ApplyModifiedPropertiesWithoutUndo();
 
             var audio = ForgeSetupUtil.GetOrAdd<AudioSource>(go);
             audio.playOnAwake = false;
             audio.loop = false;
-            audio.spatialBlend = 0.6f; // mostly from the piece, still clearly audible
+            audio.spatialBlend = 0.25f; // a hint of direction from the piece, always clearly audible
+            audio.volume = 1f;
             audio.minDistance = 0.5f;
             audio.maxDistance = 10f;
             audio.rolloffMode = AudioRolloffMode.Linear;

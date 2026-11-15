@@ -202,6 +202,13 @@ class Judge(unittest.TestCase):
         _, out = feed(j, [apart] * 3 + [hair] * 10, state="driver,step=2,complete=false")
         self.assertTrue(out["final"])
 
+    def test_later_step_needs_no_apart(self):
+        # Step 3 (hair): the loose hairpiece is rarely detected, so "apart" may never be seen; it must still complete.
+        hair = [det("head", 0.4, 0.4, 0.43, 0.43), det("hairpiece", 0.4, 0.37, 0.43, 0.405)]
+        j = judge(None, FakeLimiter())  # no VLM: geometry fallback only
+        _, out = feed(j, [hair] * 30, state="driver,step=2,complete=false")
+        self.assertIsNotNone(out)
+
     def test_no_vlm_skip_when_never_apart(self):
         # "Start over" with the figure still assembled: the VLM would say yes; never ask before seeing parts apart.
         vlm = FakeVlm([True])

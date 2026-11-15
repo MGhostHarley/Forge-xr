@@ -8,5 +8,6 @@
  "TableSurface.handRayRadius": 0.07,
  "CloudVisionClassifier.minInterval": 0.2,
  "PickupSpot.activeLineWidth": 0.004,
- "PickupSpot.idleLineWidth": 0.002
+ "PickupSpot.idleLineWidth": 0.002,
+ "StepCelebration.volume": 1.0
 }
