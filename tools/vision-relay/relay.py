@@ -144,6 +144,39 @@ class NvidiaDetector:
         return out, content
 
 
+class LocalYoloDetector:
+    """Fine-tuned YOLO (tools/local-detector) on the laptop: ~50-100 ms CPU, no API, no rate limit.
+    Needs the detector venv (ultralytics): run the relay with ~/.venvs/forge-detector/bin/python."""
+
+    def __init__(self, weights, conf=0.3, imgsz=640):
+        from ultralytics import YOLO
+        self.yolo = YOLO(weights)
+        self.conf, self.imgsz = conf, imgsz
+        # Weakly learned classes (few/odd pseudo-labels) score low; accept them at a lower cutoff.
+        self.part_conf = {"hairpiece": 0.1, "torso": 0.2}
+        self.model = "local:" + pathlib.Path(weights).name
+        self._lock = threading.Lock()  # ultralytics predict is not thread-safe
+
+    def detect(self, jpeg_bytes, parts=None):
+        parts = [p for p in (parts or PARTS) if p in PARTS] or list(PARTS)
+        im = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
+        floor = min([self.conf] + list(self.part_conf.values()))
+        with self._lock:
+            r = self.yolo.predict(im, conf=floor, imgsz=self.imgsz, verbose=False)[0]
+        best = {}
+        for b in r.boxes:
+            part = self.yolo.names[int(b.cls.item())]
+            c = float(b.conf.item())
+            if c < self.part_conf.get(part, self.conf):
+                continue
+            if part in parts and (part not in best or c > best[part][0]):
+                best[part] = (c, b.xyxyn[0].tolist())
+        out = [{"partId": p, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+                # The relay's threshold already filtered; report as trusted like the cloud answers (Quest drops < 0.5).
+                "confidence": 0.8, "score": round(c, 3)} for p, (c, (x0, y0, x1, y1)) in best.items()]
+        return out, json.dumps([[p, round(c, 3)] for p, (c, _) in best.items()])
+
+
 class RateLimiter:
     """Sliding-window limit on upstream API calls, plus a cooldown after the API answers 429 (its real limit is
     stricter than the advertised 40/min)."""
@@ -204,7 +237,7 @@ figcaption{{font-size:12px;color:#aaa;padding:2px}}.s{{margin-bottom:10px;color:
 <div class=s>{stats}</div><div class=g>{items}</div></body></html>"""
 
 
-def make_handler(detector, log_dir, limiter):
+def make_handler(detector, log_dir, limiter, log_every=1):
     lock = threading.Lock()
     counter = {"n": 0}
     recent = collections.deque(maxlen=48)  # newest last: dicts with n, t, frame, seconds, parts, dets, err
@@ -319,8 +352,8 @@ def make_handler(detector, log_dir, limiter):
                                "dets": dets, "err": err})
                 if ann:
                     images[n] = ann
-            if log_dir:
-                stem = log_dir / f"{time.strftime('%H%M%S')}_{n:05d}_f{frame_id}"
+            if log_dir and n % max(1, log_every) == 0:
+                stem =log_dir / f"{time.strftime('%H%M%S')}_{n:05d}_f{frame_id}"
                 stem.with_suffix(".jpg").write_bytes(jpeg)
                 stem.with_suffix(".json").write_text(json.dumps(
                     {"frameId": frame_id, "seconds": dt, "parts": asked, "detections": dets, "error": err, "raw": raw},
@@ -343,13 +376,22 @@ def main():
                     help="save each frame + answer here (review / training data)")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--max-per-minute", type=int, default=25, help="upstream API calls per minute (0 = no limit)")
+    ap.add_argument("--detector", choices=["nvidia", "local"], default="nvidia")
+    ap.add_argument("--weights", default="", help="local: path to the fine-tuned YOLO .pt")
+    ap.add_argument("--local-conf", type=float, default=0.3, help="local: min YOLO score")
+    ap.add_argument("--log-every", type=int, default=1, help="save every Nth frame (local runs fast; saves disk)")
     a = ap.parse_args()
 
-    detector = NvidiaDetector(nvidia_key())
+    if a.detector == "local":
+        detector = LocalYoloDetector(a.weights, conf=a.local_conf)
+        a.max_per_minute = 0  # no upstream API
+    else:
+        detector = NvidiaDetector(nvidia_key())
     log_dir = None if a.no_log else pathlib.Path(a.log_dir).expanduser()
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer((a.host, a.port), make_handler(detector, log_dir, RateLimiter(a.max_per_minute)))
+    server = ThreadingHTTPServer((a.host, a.port),
+                                 make_handler(detector, log_dir, RateLimiter(a.max_per_minute), a.log_every))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
     print(f"[relay] live review page: http://127.0.0.1:{a.port}/review", flush=True)
     # Auto-reload: restart this process when relay.py changes (edit and it is live; config is read per request).

@@ -23,6 +23,8 @@ def main():
     ap.add_argument("--out", default="/tmp/forge-replay")
     ap.add_argument("--compare", action="store_true")
     ap.add_argument("--tile", type=int, default=320)
+    ap.add_argument("--weights", default="", help="use the local fine-tuned YOLO instead of NVIDIA (detector venv)")
+    ap.add_argument("--local-conf", type=float, default=0.3)
     a = ap.parse_args()
 
     files = []
@@ -32,7 +34,11 @@ def main():
     if not files:
         sys.exit("no frames")
     parts = [p for p in a.parts.split(",") if p] or None
-    det = relay.NvidiaDetector(relay.nvidia_key())
+    if a.weights:
+        det = relay.LocalYoloDetector(a.weights, conf=a.local_conf)
+        a.per_minute = 100000  # no API cap
+    else:
+        det = relay.NvidiaDetector(relay.nvidia_key())
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     gap = 60.0 / max(1, a.per_minute)

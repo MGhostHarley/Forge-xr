@@ -1,12 +1,12 @@
 {
-  "PieceTracker.maxMissedAnswers": 3,
-  "PieceTracker.handMissedAnswers": 6,
-  "PieceTracker.trustedConfidence": 0.75,
-  "PieceTracker.smoothingTime": 0.15,
-  "ColorPieceTracker.minMatch": 0.2,
-  "ColorPieceTracker.maxWeakFrames": 10,
-  "TableSurface.handRayRadius": 0.07,
-  "CloudVisionClassifier.minInterval": 2.4,
-  "PickupSpot.activeLineWidth": 0.004,
-  "PickupSpot.idleLineWidth": 0.002
+ "PieceTracker.maxMissedAnswers": 12,
+ "PieceTracker.handMissedAnswers": 20,
+ "PieceTracker.trustedConfidence": 0.75,
+ "PieceTracker.smoothingTime": 0.15,
+ "ColorPieceTracker.minMatch": 0.2,
+ "ColorPieceTracker.maxWeakFrames": 10,
+ "TableSurface.handRayRadius": 0.07,
+ "CloudVisionClassifier.minInterval": 0.2,
+ "PickupSpot.activeLineWidth": 0.004,
+ "PickupSpot.idleLineWidth": 0.002
 }
