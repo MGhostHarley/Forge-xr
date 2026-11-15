@@ -83,6 +83,7 @@ Step thresholds: `tools/vision-relay/step_config.json` (re-read on change).
 | a piece is never found | try `--detector hybrid`; brighter light helps; `/review` shows what the camera sees |
 | confetti/advance at the wrong time | `curl -X POST .../step/reset`, raise `hold_seconds` or set `enabled: false` |
 | no chime | the app was launched while the headset was asleep (Horizon mutes it): wear the headset, rerun `start_demo.sh` (or relaunch from the headset's app library); you should hear a test chime ~2 s after launch |
+| headset app is not the demo build (someone installed another APK) | `adb install -r ~/forge-models/ForgeXR-demo-freeze.apk` (frozen build, git tag `demo-freeze`) |
 | need to finish a step anyway | pinch Next, or `curl -X POST 127.0.0.1:8787/step/force` |
 
 Diagnostics on the headset: `adb logcat -s Unity | grep ForgeDiag` (TRACKS, ANSWER, STEP, CONFIG lines).
