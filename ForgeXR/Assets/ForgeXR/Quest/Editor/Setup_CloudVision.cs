@@ -14,7 +14,7 @@ namespace Forge.EditorTools
         const bool Enabled = true;
         public const string Name = "CloudVision";
         // Request pacing (written to the scene each setup run, so changing these takes effect on the next build).
-        const float MinIntervalSeconds = 0.5f;
+        const float MinIntervalSeconds = 1.6f; // NVIDIA cap: 40 requests/min (1.6 s = ~37/min)
         const int MaxInFlight = 3;
         const int RequestTimeoutSeconds = 8;
         const float CameraFramesPerSecond = 10f;
