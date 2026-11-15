@@ -36,10 +36,11 @@ PARTS = {
 def build_prompt(parts):
     """Prompt for a subset of PARTS (the Quest sends the active walkthrough's parts in X-Parts)."""
     return (
-        "Find these LEGO parts on the table if they are visible:\n"
+        "Find these LEGO parts anywhere in the image, whether lying on the table or held in someone's hand "
+        "(possibly already attached to other parts):\n"
         + "\n".join(f"- {k}: {PARTS[k]}" for k in parts)
         + "\nReport every part you can see, including small or distant ones, but do not guess. Each part appears at most "
-          "once; anything else on the table is not one of these parts. Reply with only JSON: "
+          "once; anything else in the scene is not one of these parts. Reply with only JSON: "
           '[{"label": one of the ids above, "x0": left, "y0": top, "x1": right, "y1": bottom}] '
           "with coordinates normalized 0-1000 (x across the width from the left, y down the height from the top). "
           "Reply [] if none are visible."
