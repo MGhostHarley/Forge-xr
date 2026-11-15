@@ -38,6 +38,8 @@ def choose_parts(state_header, parts_header, seq):
         at_start = fields.get("step", "1") == "0" or fields.get("complete") == "true"
         if at_start and seq % PROBE_ALL_EVERY == 0:
             return None
+        if flow == "gen":
+            return list(GEN_PARTS) or None
         return WHEEL_PARTS if flow == "wheel" else DRIVER_PARTS
     wanted = [p.strip() for p in parts_header.split(",") if p.strip()]
     return wanted or None
@@ -54,7 +56,7 @@ PARTS = {
             "not the yellow pin on the car)",
     "hairpiece": "orange LEGO minifigure hair piece",
     "tire": "black rubber LEGO tire (a black ring), with or without a rim inside",
-    "rim": "grey or white plastic LEGO wheel hub on its own, without a tire",
+    "rim": "dark grey (almost black) plastic LEGO wheel hub on its own, without a tire (official booklet colour)",
     "axle-pin": "small yellow axle pin sticking out of the left side of the LEGO car chassis",
 }
 
@@ -340,7 +342,92 @@ def try_nvidia_key():
         return None
 
 
-def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
+GEN_PARTS = []  # detectable parts of the active generated walkthrough (choose_parts, flow "gen")
+
+
+class Walkthroughs:
+    """Generated walkthrough specs (walkthrough_spec.py) served to the Quest; one is active (flow "gen")."""
+
+    def __init__(self, directory, active=None, judge=None):
+        import walkthrough_spec as ws
+        self.ws, self.dir, self.judge = ws, pathlib.Path(directory), judge
+        self.specs = ws.load_dir(self.dir) if self.dir.exists() else {}
+        self.active = None
+        self.select_nonce = 0  # bumped by POST /walkthrough?...&select=1; the Quest switches to "gen" when it changes
+        if self.specs:
+            self.activate(active if active in self.specs else sorted(self.specs)[0])
+
+    def _install(self, spec_id):
+        global GEN_PARTS
+        spec = self.specs[spec_id]
+        rules, count = self.ws.step_rules(spec)
+        step_check.register_flow(self.ws.FLOW, rules, count)
+        GEN_PARTS = self.ws.detectable_parts(spec)
+        self.active = spec_id
+        return spec, rules, count
+
+    def activate(self, spec_id):
+        spec, rules, count = self._install(spec_id)
+        if self.judge:
+            self.judge.reset()
+        print(f"[relay] generated walkthrough: {spec_id} ({count} steps, {len(rules)} auto-checked)", flush=True)
+        return spec
+
+    def listing(self):
+        return {"active": self.active, "walkthroughs": [
+            {"id": k, "title": v["title"], "steps": len(v["steps"]), "source": v.get("source", {}).get("kind", "")}
+            for k, v in sorted(self.specs.items())]}
+
+    def quest(self):
+        if not self.active:
+            return {"id": "", "title": "", "completion": "", "detectable": [], "steps": [],
+                    "selectNonce": self.select_nonce}
+        return dict(self.ws.for_quest(self.specs[self.active]), selectNonce=self.select_nonce)
+
+    def review_html(self):
+        cards = []
+        for sid, spec in sorted(self.specs.items()):
+            det = {p["id"] for p in spec["parts"] if p.get("detectable")}
+            steps = "".join(
+                "<li><b>{}</b>{}<div class=meta>{}{}</div></li>".format(
+                    html.escape(st["instruction"]),
+                    " <span class=auto>auto-check</span>" if st.get("rule") else " <span class=manual>Next</span>",
+                    " ".join(f"<span class='chip{' det' if h in det else ''}'>{html.escape(h)}</span>"
+                             for h in st.get("highlight", [])),
+                    f" &middot; check: {html.escape(st['check'])}" if st.get("check") else "")
+                for st in spec["steps"])
+            src = spec.get("source", {})
+            active = sid == self.active
+            cards.append(
+                f"<section class='{'active' if active else ''}'><h2>{html.escape(spec['title'])}</h2>"
+                f"<div class=meta>{html.escape(sid)} &middot; from {html.escape(src.get('kind', '?'))} "
+                f"{html.escape(src.get('image', ''))}{' &middot; <b>active</b>' if active else ''}</div>"
+                f"<ol>{steps}</ol><p class=meta>Done: {html.escape(spec['completion'])}</p>"
+                f"<button onclick=\"fetch('/walkthrough?id={sid}&select=1',{{method:'POST'}}).then(()=>location.reload())\">"
+                f"Show on the headset</button></section>")
+        body = "".join(cards) or "<p>No generated walkthroughs yet: run generate_walkthrough.py.</p>"
+        return ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                "<title>Generated walkthroughs</title><style>body{font:15px system-ui;margin:16px;background:#f5f5f2;"
+                "color:#222}section{background:#fff;border-radius:10px;padding:14px 18px;margin:0 0 14px;"
+                "border:2px solid transparent}section.active{border-color:#2a7}h2{margin:0 0 4px;font-size:19px}"
+                ".meta{color:#666;font-size:13px}li{margin:8px 0}.chip{display:inline-block;padding:1px 7px;"
+                "border-radius:9px;background:#eee;margin-right:4px}.chip.det{background:#d9f2e4}.auto{color:#185;"
+                "font-size:12px}.manual{color:#a60;font-size:12px}button{padding:7px 12px;border-radius:7px;"
+                "border:1px solid #2a7;background:#2a7;color:#fff;cursor:pointer}</style>"
+                "<h1>Walkthroughs generated from the instruction booklet</h1>"
+                "<p class=meta>Green chips = parts the camera detects (boxed in the headset); auto-check = the step "
+                "completes by itself when the camera sees the parts joined.</p>" + body)
+
+    def reload(self):
+        """Re-read the spec files (a newly generated walkthrough shows up without restarting the relay)."""
+        self.specs = self.ws.load_dir(self.dir) if self.dir.exists() else {}
+        if self.active in self.specs:
+            self._install(self.active)  # refresh rules, keep the judge's progress
+        elif self.specs:
+            self.activate(sorted(self.specs)[0])
+
+
+def make_handler(detector, log_dir, limiter, log_every=1, judge=None, walkthroughs=None):
     lock = threading.Lock()
     counter = {"n": 0}
     recent = collections.deque(maxlen=48)  # newest last: dicts with n, t, frame, seconds, parts, dets, err
@@ -410,6 +497,15 @@ def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
                 self._send(200, {"summary": stats_text()})
             elif self.path.startswith("/step"):
                 self._send(200, judge.status() if judge else {"status": "off"})
+            elif self.path.startswith("/walkthroughs/review"):
+                if walkthroughs:
+                    walkthroughs.reload()
+                self._raw(200, (walkthroughs.review_html() if walkthroughs else "no walkthroughs").encode(),
+                          "text/html; charset=utf-8")
+            elif self.path.startswith("/walkthroughs"):
+                self._send(200, walkthroughs.listing() if walkthroughs else {"active": None, "walkthroughs": []})
+            elif self.path.startswith("/walkthrough"):
+                self._send(200, walkthroughs.quest() if walkthroughs else {"id": "", "steps": []})
             else:
                 self._send(404, {"error": "not found"})
 
@@ -430,6 +526,21 @@ def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
                 if judge:
                     judge.reset()
                 self._send(200, {"ok": True})
+                return
+            if self.path.startswith("/walkthrough"):  # operator: POST /walkthrough?id=<spec id>
+                from urllib.parse import parse_qs, urlparse
+                q = parse_qs(urlparse(self.path).query)
+                wid = (q.get("id") or [""])[0]
+                if walkthroughs and wid and wid not in walkthroughs.specs:
+                    walkthroughs.reload()  # just generated? pick it up
+                if not walkthroughs or wid not in walkthroughs.specs:
+                    self._send(404, {"error": f"unknown walkthrough {wid!r}",
+                                     "known": sorted(walkthroughs.specs) if walkthroughs else []})
+                    return
+                walkthroughs.activate(wid)
+                if (q.get("select") or ["0"])[0] in ("1", "true", "yes"):
+                    walkthroughs.select_nonce += 1
+                self._send(200, {"ok": True, "active": wid, "selectNonce": walkthroughs.select_nonce})
                 return
             if self.path.startswith("/step/force"):  # operator/debug: mark the current step complete now
                 self._send(200, {"ok": True, "confirmed": judge.force() if judge else None})
@@ -517,6 +628,9 @@ def main():
     ap.add_argument("--detector", choices=["nvidia", "local", "hybrid"], default="nvidia")
     ap.add_argument("--weights", default="", help="local: path to the fine-tuned YOLO .pt")
     ap.add_argument("--local-conf", type=float, default=0.3, help="local: min YOLO score")
+    ap.add_argument("--walkthrough-dir", default=str(pathlib.Path(__file__).resolve().parent / "walkthroughs"),
+                    help="generated walkthrough specs served to the Quest (GET /walkthrough)")
+    ap.add_argument("--walkthrough", default="", help="id of the active generated walkthrough (default: first)")
     ap.add_argument("--hybrid-every", type=float, default=4.0, help="hybrid: seconds between background Nemotron checks")
     ap.add_argument("--log-every", type=int, default=1, help="save every Nth frame (local runs fast; saves disk)")
     ap.add_argument("--no-step", action="store_true", help="turn off automatic step completion (step_check.py)")
@@ -548,14 +662,15 @@ def main():
                                      crop_dir=(log_dir / "step-crops") if log_dir else None,
                                      log=lambda m: print(m, flush=True))
         print(f"[relay] step completion on (VLM confirm: {'yes' if vlm else 'no key, geometry only'})", flush=True)
+    walkthroughs = Walkthroughs(a.walkthrough_dir, a.walkthrough or None, judge)
     server = ThreadingHTTPServer((a.host, a.port),
-                                 make_handler(detector, log_dir, limiter, a.log_every, judge))
+                                 make_handler(detector, log_dir, limiter, a.log_every, judge, walkthroughs))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
     print(f"[relay] live review page: http://127.0.0.1:{a.port}/review", flush=True)
     # Auto-reload: restart this process when relay.py or step_check.py changes (edit and it is live; quest_config.json
     # and step_config.json are read per request).
     me = pathlib.Path(__file__).resolve()
-    watched = [me, HERE / "step_check.py"]
+    watched = [me, HERE / "step_check.py", HERE / "walkthrough_spec.py"]
 
     def mtimes():
         out = []

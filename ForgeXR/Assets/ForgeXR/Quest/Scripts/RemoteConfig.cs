@@ -28,6 +28,7 @@ namespace Forge
             ["PickupSpot"] = typeof(PickupSpot), ["CameraFrameSource"] = typeof(CameraFrameSource),
             ["PieceLocator"] = typeof(PieceLocator), ["FloatingCue"] = typeof(FloatingCue),
             ["StepCelebration"] = typeof(StepCelebration),
+            ["QuestWalkthroughDriver"] = typeof(QuestWalkthroughDriver),
         };
 
         string lastJson;

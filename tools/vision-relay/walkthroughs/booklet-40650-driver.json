@@ -1,0 +1,83 @@
+{
+ "id": "booklet-40650-driver",
+ "title": "LEGO minifigure assembly",
+ "completion": "The minifigure is fully assembled.",
+ "source": {
+  "kind": "booklet",
+  "image": "40650.pdf p4",
+  "model": "nvidia/nemotron-3.5-super-vl-120b-a12b"
+ },
+ "parts": [
+  {
+   "id": "legs",
+   "name": "tan minifigure legs",
+   "description": "tan/beige LEGO minifigure legs (hip piece with two legs)",
+   "detectable": true
+  },
+  {
+   "id": "torso",
+   "name": "light-blue printed torso",
+   "description": "light-blue printed LEGO minifigure torso with two yellow arms",
+   "detectable": true
+  },
+  {
+   "id": "head",
+   "name": "yellow minifigure head",
+   "description": "small round yellow cylinder with a printed face",
+   "detectable": true
+  },
+  {
+   "id": "hairpiece",
+   "name": "orange hairpiece",
+   "description": "orange LEGO minifigure hair piece",
+   "detectable": true
+  }
+ ],
+ "steps": [
+  {
+   "instruction": "Place the tan minifigure legs on the table, then attach the light-blue printed torso to the top of the legs.",
+   "highlight": [
+    "legs",
+    "torso"
+   ],
+   "check": "torso is seated on the hip studs",
+   "rule": {
+    "a": "torso",
+    "b": "legs",
+    "mode": "touch",
+    "anchor": "torso",
+    "question": "Is the blue LEGO minifigure torso attached to the tan legs, forming one connected minifigure body?"
+   }
+  },
+  {
+   "instruction": "Attach the yellow minifigure head to the top of the torso.",
+   "highlight": [
+    "head",
+    "torso"
+   ],
+   "check": "head is seated on the neck stud",
+   "rule": {
+    "a": "head",
+    "b": "torso",
+    "mode": "touch",
+    "anchor": "head",
+    "question": "Is the yellow LEGO minifigure head attached on top of the blue torso?"
+   }
+  },
+  {
+   "instruction": "Place the orange hairpiece on top of the head.",
+   "highlight": [
+    "hairpiece",
+    "head"
+   ],
+   "check": "hairpiece covers the top of the head",
+   "rule": {
+    "a": "hairpiece",
+    "b": "head",
+    "mode": "touch",
+    "anchor": "hairpiece",
+    "question": "Is the orange LEGO hair piece attached on top of the yellow minifigure head?"
+   }
+  }
+ ]
+}

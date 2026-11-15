@@ -34,7 +34,7 @@ namespace Forge
             public StepTargets(params string[] ids) { partIds = ids; }
         }
 
-        public enum Flow { Driver, Wheel }
+        public enum Flow { Driver, Wheel, Generated }
 
         public const string NextLabel = "Next";
         public const string DoneLabel = "Done";
@@ -46,7 +46,13 @@ namespace Forge
         [SerializeField] NextInput input;
         [SerializeField] FloatingCue cue;
         [SerializeField] PieceTracker tracker;
+        [Tooltip("Walkthrough generated from a booklet page on the laptop (optional; operator-selected only).")]
+        [SerializeField] GeneratedWalkthrough generated;
+        [SerializeField] WalkthroughLoader loader;
+        [Tooltip("Live config: set to 0 Driver / 1 Wheel / 2 Generated to switch now (-1 = no request).")]
+        [SerializeField] int forceFlow = -1;
         CloudVisionClassifier cloud;
+        int lastForceFlow = -1;
 
         [Tooltip("Driver: part ids to highlight per step, by step index.")]
         [SerializeField] List<StepTargets> driverSteps = new()
@@ -67,6 +73,7 @@ namespace Forge
 
         [Tooltip("Cue text per step. {0} = step number (1-based), {1} = step count, {2} = Harley's instruction.")]
         [SerializeField] string stepFormat = "{0}/{1}: {2}";
+        [SerializeField] string waitingText = "Waiting for a walkthrough from the laptop...";
 
         [Header("Auto-select from detected parts")]
         [SerializeField] bool autoSelect = true;
@@ -83,9 +90,18 @@ namespace Forge
         InputAction toggleAction;
 
         public Flow CurrentFlow => flow;
-        ForgeXR.DesktopWalkthrough Active => flow == Flow.Wheel ? wheel : driver;
-        int ActiveStepCount => flow == Flow.Wheel ? wheelStepCount : driverStepCount;
+        ForgeXR.DesktopWalkthrough Active =>
+            flow == Flow.Generated && generated != null ? generated : flow == Flow.Wheel ? wheel : driver;
+        int ActiveStepCount =>
+            flow == Flow.Generated && generated != null ? generated.Count : flow == Flow.Wheel ? wheelStepCount : driverStepCount;
         List<StepTargets> ActiveSteps => flow == Flow.Wheel ? wheelSteps : driverSteps;
+        bool GeneratedReady => generated != null && generated.HasSpec;
+
+        public void ConfigureGenerated(GeneratedWalkthrough g, WalkthroughLoader l)
+        {
+            generated = g;
+            loader = l;
+        }
 
         public void Configure(ForgeXR.DemoWalkthrough d, ForgeXR.DriverWalkthrough dr, ForgeXR.WheelWalkthrough wh,
                               NextInput nextInput, FloatingCue floatingCue, PieceTracker pieceTracker)
@@ -106,6 +122,9 @@ namespace Forge
             if (input == null) input = FindAnyObjectByType<NextInput>();
             if (cue == null) cue = FindAnyObjectByType<FloatingCue>();
             if (tracker == null) tracker = FindAnyObjectByType<PieceTracker>();
+            if (generated == null) generated = GetComponent<GeneratedWalkthrough>();
+            if (loader == null) loader = GetComponent<WalkthroughLoader>();
+            if (generated != null) generated.enabled = false; // desktop IMGUI off, like Harley's
 
             if (driver == null || wheel == null)
             {
@@ -151,6 +170,11 @@ namespace Forge
 
         void OnEnable()
         {
+            if (loader != null)
+            {
+                loader.Loaded += OnGeneratedLoaded;
+                loader.SelectRequested += OnGeneratedSelectRequested;
+            }
             toggleAction?.Enable();
             if (input == null) return;
             input.onNext.AddListener(OnNext);
@@ -160,6 +184,11 @@ namespace Forge
 
         void OnDisable()
         {
+            if (loader != null)
+            {
+                loader.Loaded -= OnGeneratedLoaded;
+                loader.SelectRequested -= OnGeneratedSelectRequested;
+            }
             toggleAction?.Disable();
             if (input == null) return;
             input.onNext.RemoveListener(OnNext);
@@ -171,7 +200,18 @@ namespace Forge
 
         void Update()
         {
-            if (!autoSelect || manualLock || tracker == null) return;
+            // Live-config request (RemoteConfig sets forceFlow): switch once per new value.
+            if (forceFlow != lastForceFlow)
+            {
+                lastForceFlow = forceFlow;
+                if (forceFlow >= 0 && forceFlow <= (int)Flow.Generated)
+                {
+                    manualLock = true;
+                    Select((Flow)forceFlow, "live config forceFlow");
+                }
+            }
+            // A generated walkthrough is only ever chosen by the operator; never auto-switch away from it.
+            if (!autoSelect || manualLock || tracker == null || flow == Flow.Generated) return;
             if (Time.unscaledTime < nextCheck) return;
             nextCheck = Time.unscaledTime + selectCheckInterval;
 
@@ -202,19 +242,35 @@ namespace Forge
         void ToggleManually()
         {
             manualLock = true;
-            Select(flow == Flow.Driver ? Flow.Wheel : Flow.Driver, "operator toggle (auto-select paused until complete)");
+            // Driver -> Wheel -> Generated (when one is loaded) -> Driver.
+            var next = flow == Flow.Driver ? Flow.Wheel
+                : flow == Flow.Wheel && GeneratedReady ? Flow.Generated
+                : Flow.Driver;
+            Select(next, "operator toggle (auto-select paused until complete)");
+        }
+
+        void OnGeneratedLoaded(GeneratedWalkthrough w)
+        {
+            if (flow == Flow.Generated) Refresh(); // the laptop changed it: restart it at step 1 (Load reset it)
+        }
+
+        void OnGeneratedSelectRequested()
+        {
+            manualLock = true;
+            Select(Flow.Generated, "operator selected the generated walkthrough on the laptop");
         }
 
         void Select(Flow f, string reason)
         {
+            if (f == Flow.Generated && generated == null) f = Flow.Driver;
             flow = f;
-            if (demo != null)
+            if (demo != null && f != Flow.Generated)
             {
                 if (f == Flow.Wheel) demo.SelectWheel();
                 else demo.SelectDriver();
             }
             Active.ResetWalkthrough();
-            if (tracker != null) tracker.SetShownParts(f == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging);
+            if (tracker != null) tracker.SetShownParts(FlowParts(f));
             Debug.Log($"[Forge] Walkthrough: {f} ({reason})");
             Refresh();
         }
@@ -224,7 +280,8 @@ namespace Forge
             var active = Active;
             if (active.IsComplete) active.ResetWalkthrough();
             else active.Advance();
-            if (active.IsComplete) manualLock = false; // auto-select may pick the next walkthrough
+            // Auto-select may pick the next walkthrough (never away from an operator-chosen generated one).
+            if (active.IsComplete && flow != Flow.Generated) manualLock = false;
             Refresh();
         }
 
@@ -252,11 +309,23 @@ namespace Forge
 
             if (cue != null)
             {
-                // Completion: Harley's completion message only, no counter.
-                cue.SetText(complete
-                    ? active.CurrentInstruction
-                    : string.Format(stepFormat, step + 1, count, active.CurrentInstruction));
-                cue.SetNextLabel(complete ? StartOverLabel : step == count - 1 ? DoneLabel : NextLabel);
+                if (flow == Flow.Generated && !GeneratedReady)
+                {
+                    cue.SetText(waitingText);
+                    cue.SetNextLabel(NextLabel);
+                }
+                else
+                {
+                    // Completion: the completion message only, no counter.
+                    var text = complete
+                        ? active.CurrentInstruction
+                        : string.Format(stepFormat, step + 1, count, active.CurrentInstruction);
+                    // Generated steps carry what to verify (orientation, seating): a smaller second line.
+                    var check = flow == Flow.Generated && !complete ? generated.CheckFor(step) : "";
+                    if (!string.IsNullOrEmpty(check)) text += $"\n<size=70%>Check: {check}</size>";
+                    cue.SetText(text);
+                    cue.SetNextLabel(complete ? StartOverLabel : step == count - 1 ? DoneLabel : NextLabel);
+                }
             }
 
             HighlightRegistry.Highlight(complete ? Array.Empty<string>() : PartsFor(step));
@@ -268,14 +337,20 @@ namespace Forge
             {
                 // Always this walkthrough's parts (other labels get confused onto our pieces and hide them); at step 1
                 // and on the completion screen, 1 request in 4 asks for every part so auto-select can switch.
-                cloud.RequestedParts = flow == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging;
-                cloud.ProbeAllEveryN = (step == 0 || complete) ? 4 : 0;
-                cloud.WalkthroughState = $"{(flow == Flow.Wheel ? "wheel" : "driver")},step={step},complete={(complete ? "true" : "false")}";
+                cloud.RequestedParts = FlowParts(flow);
+                cloud.ProbeAllEveryN = flow != Flow.Generated && (step == 0 || complete) ? 4 : 0;
+                var flowName = flow == Flow.Generated ? "gen" : flow == Flow.Wheel ? "wheel" : "driver";
+                cloud.WalkthroughState = $"{flowName},step={step},complete={(complete ? "true" : "false")}";
             }
         }
 
+        string[] FlowParts(Flow f) =>
+            f == Flow.Generated && generated != null ? generated.Detectable
+            : f == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging;
+
         string[] PartsFor(int step)
         {
+            if (flow == Flow.Generated) return generated != null ? generated.HighlightFor(step) : Array.Empty<string>();
             var steps = ActiveSteps;
             if (step >= 0 && step < steps.Count && steps[step]?.partIds != null)
                 return steps[step].partIds;

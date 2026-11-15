@@ -63,7 +63,7 @@ STEP_RULES = {
     # Wheel step 0 (pick up tire and rim) is manual, but if the rim is already in the tire, steps 0 and 1 are done.
     ("wheel", 0): {"alias": ("wheel", 1)},
     ("wheel", 1): {"a": "rim", "b": "tire", "mode": "inside", "anchor": "tire",
-                   "question": "Is the grey or white LEGO wheel hub pressed inside the black rubber tire, forming "
+                   "question": "Is the dark grey LEGO wheel hub pressed inside the black rubber tire, forming "
                                "one wheel?"},
     ("wheel", 2): {"a": "tire", "b": "axle-pin", "mode": "touch", "anchor": "tire",
                    "question": "Is a black LEGO wheel mounted on the yellow axle pin on the side of the LEGO car?"},
@@ -135,6 +135,17 @@ def best_by_part(dets):
         if p and (p not in out or d.get("confidence", 0) > out[p].get("confidence", 0)):
             out[p] = d
     return out
+
+
+def register_flow(flow, rules, count):
+    """Install (or replace) the rules of a generated walkthrough, e.g. flow 'gen' from walkthrough_spec.step_rules().
+    The built-in driver/wheel rules are never touched."""
+    if flow in ("driver", "wheel"):
+        raise ValueError("built-in flows are fixed")
+    for key in [k for k in STEP_RULES if k[0] == flow]:
+        del STEP_RULES[key]
+    STEP_RULES.update(rules)
+    STEP_COUNTS[flow] = count
 
 
 def evaluate(rule, dets, cfg, memory, t):

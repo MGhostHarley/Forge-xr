@@ -1,0 +1,81 @@
+{
+ "id": "manual-driver",
+ "title": "LEGO driver assembly",
+ "completion": "Driver assembled",
+ "source": {
+  "kind": "manual",
+  "image": "DriverWalkthrough.cs (Harley)",
+  "model": ""
+ },
+ "parts": [
+  {
+   "id": "legs",
+   "name": "legs",
+   "description": "",
+   "detectable": true
+  },
+  {
+   "id": "torso",
+   "name": "torso",
+   "description": "",
+   "detectable": true
+  },
+  {
+   "id": "head",
+   "name": "head",
+   "description": "",
+   "detectable": true
+  },
+  {
+   "id": "hairpiece",
+   "name": "hairpiece",
+   "description": "",
+   "detectable": true
+  }
+ ],
+ "steps": [
+  {
+   "instruction": "Press the torso onto the legs with the shirt print facing the toes.",
+   "highlight": [
+    "legs",
+    "torso"
+   ],
+   "check": "",
+   "rule": {
+    "a": "torso",
+    "b": "legs",
+    "mode": "touch",
+    "anchor": "torso",
+    "question": "Is the blue LEGO minifigure torso attached to the tan legs, forming one connected minifigure body?"
+   }
+  },
+  {
+   "instruction": "Press the head onto the neck with the face pointing forward.",
+   "highlight": [
+    "head"
+   ],
+   "check": "",
+   "rule": {
+    "a": "head",
+    "b": "torso",
+    "mode": "touch",
+    "anchor": "head",
+    "question": "Is the yellow LEGO minifigure head attached on top of the blue torso?"
+   }
+  },
+  {
+   "instruction": "Press the hairpiece onto the head.",
+   "highlight": [
+    "hairpiece"
+   ],
+   "check": "",
+   "rule": {
+    "a": "hairpiece",
+    "b": "head",
+    "mode": "touch",
+    "anchor": "hairpiece",
+    "question": "Is the orange LEGO hair piece attached on top of the yellow minifigure head?"
+   }
+  }
+ ]
+}

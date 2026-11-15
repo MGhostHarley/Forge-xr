@@ -1,0 +1,78 @@
+{
+ "id": "manual-wheel",
+ "title": "LEGO chassis and wheel assembly",
+ "completion": "Wheel mounted",
+ "source": {
+  "kind": "manual",
+  "image": "WheelWalkthrough.cs (Harley)",
+  "model": ""
+ },
+ "parts": [
+  {
+   "id": "tire",
+   "name": "tire",
+   "description": "",
+   "detectable": true
+  },
+  {
+   "id": "rim",
+   "name": "rim",
+   "description": "",
+   "detectable": true
+  },
+  {
+   "id": "axle-pin",
+   "name": "axle-pin",
+   "description": "",
+   "detectable": true
+  }
+ ],
+ "steps": [
+  {
+   "instruction": "Pick up the tire on the left and the rim on the right.",
+   "highlight": [
+    "tire",
+    "rim"
+   ],
+   "check": "",
+   "rule": null
+  },
+  {
+   "instruction": "Press the rim into the tire until the rubber sits evenly all the way around.",
+   "highlight": [
+    "tire",
+    "rim"
+   ],
+   "check": "",
+   "rule": {
+    "a": "rim",
+    "b": "tire",
+    "mode": "inside",
+    "anchor": "tire",
+    "question": "Is the dark grey LEGO wheel hub pressed inside the black rubber tire, forming one wheel?"
+   }
+  },
+  {
+   "instruction": "Line up the wheel's center hole with the yellow axle pin on the left and press the wheel on.",
+   "highlight": [
+    "axle-pin"
+   ],
+   "check": "",
+   "rule": {
+    "a": "tire",
+    "b": "axle-pin",
+    "mode": "touch",
+    "anchor": "tire",
+    "question": "Is a black LEGO wheel mounted on the yellow axle pin on the side of the LEGO car?"
+   }
+  },
+  {
+   "instruction": "Check that the mounted wheel spins freely, then press Done.",
+   "highlight": [
+    "axle-pin"
+   ],
+   "check": "",
+   "rule": null
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+{
+ "id": "booklet-40650-wheel",
+ "title": "LEGO vehicle wheel assembly",
+ "completion": "All six wheels are attached to the vehicle.",
+ "source": {
+  "kind": "booklet",
+  "image": "40650.pdf p45",
+  "model": "nvidia/nemotron-3.5-super-vl-120b-a12b"
+ },
+ "parts": [
+  {
+   "id": "tire",
+   "name": "tire",
+   "description": "black rubber tire ring",
+   "detectable": true
+  },
+  {
+   "id": "rim",
+   "name": "rim",
+   "description": "dark grey wheel hub",
+   "detectable": true
+  },
+  {
+   "id": "axle-pin",
+   "name": "axle pin",
+   "description": "",
+   "detectable": true
+  }
+ ],
+ "steps": [
+  {
+   "instruction": "Place one dark grey rim inside one black tire.",
+   "highlight": [
+    "rim",
+    "tire"
+   ],
+   "check": "rim is seated inside tire",
+   "rule": {
+    "a": "rim",
+    "b": "tire",
+    "mode": "inside",
+    "anchor": "tire",
+    "question": "Is the dark grey LEGO wheel hub pressed inside the black rubber tire, forming one wheel?"
+   }
+  },
+  {
+   "instruction": "Press the tire-and-rim unit onto each wheel axle of the vehicle (repeat 5x).",
+   "highlight": [
+    "tire",
+    "rim",
+    "axle-pin"
+   ],
+   "check": "wheel is seated on axle",
+   "rule": {
+    "a": "tire",
+    "b": "axle-pin",
+    "mode": "touch",
+    "anchor": "tire",
+    "question": "Is a black LEGO wheel mounted on the yellow axle pin on the side of the LEGO car?"
+   }
+  }
+ ]
+}
