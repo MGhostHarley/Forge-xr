@@ -18,6 +18,28 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
+HERE = pathlib.Path(__file__).resolve().parent
+CONFIG_PATH = HERE / "quest_config.json"  # live Quest tuning, served at /config (Forge.RemoteConfig polls it)
+
+# Part-selection policy (laptop side). The Quest reports X-State "driver,step=N,complete=bool".
+DRIVER_PARTS = ["legs", "torso", "head", "hairpiece"]
+WHEEL_PARTS = ["tire", "rim", "axle-pin"]
+PROBE_ALL_EVERY = 4  # at step 1 / completion, every Nth request asks for all parts so auto-select can switch
+
+
+def choose_parts(state_header, parts_header, seq):
+    """Parts to ask the model for: from the walkthrough state if sent, else the Quest's X-Parts, else all."""
+    if state_header:
+        fields = dict(f.split("=", 1) for f in state_header.split(",")[1:] if "=" in f)
+        flow = state_header.split(",")[0].strip()
+        at_start = fields.get("step", "1") == "0" or fields.get("complete") == "true"
+        if at_start and seq % PROBE_ALL_EVERY == 0:
+            return None
+        return WHEEL_PARTS if flow == "wheel" else DRIVER_PARTS
+    wanted = [p.strip() for p in parts_header.split(",") if p.strip()]
+    return wanted or None
+
+
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
@@ -232,6 +254,13 @@ def make_handler(detector, log_dir, limiter):
                     self._raw(200, data, "image/jpeg")
                 else:
                     self._send(404, {"error": "gone"})
+            elif self.path.startswith("/config"):
+                try:
+                    data = CONFIG_PATH.read_bytes() if CONFIG_PATH.exists() else b"{}"
+                    json.loads(data)  # serve only valid JSON
+                except ValueError:
+                    data = b"{}"
+                self._raw(200, data, "application/json")
             elif self.path.startswith("/stats"):
                 self._send(200, {"summary": stats_text()})
             else:
@@ -250,7 +279,11 @@ def make_handler(detector, log_dir, limiter):
                 self._send(200, {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"})
                 print(f"[relay] frame {frame_id}: skipped, over {limiter.per_minute}/min", flush=True)
                 return
-            wanted = [p.strip() for p in self.headers.get("X-Parts", "").split(",") if p.strip()]
+            try:
+                seq = int(self.headers.get("X-Request-Seq", "0"))
+            except ValueError:
+                seq = 0
+            wanted = choose_parts(self.headers.get("X-State", ""), self.headers.get("X-Parts", ""), seq) or []
             try:
                 dets, raw = detector.detect(jpeg, wanted or None)
                 err = None
@@ -308,10 +341,29 @@ def main():
     server = ThreadingHTTPServer((a.host, a.port), make_handler(detector, log_dir, RateLimiter(a.max_per_minute)))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
     print(f"[relay] live review page: http://127.0.0.1:{a.port}/review", flush=True)
+    # Auto-reload: restart this process when relay.py changes (edit and it is live; config is read per request).
+    me = pathlib.Path(__file__).resolve()
+    mtime = me.stat().st_mtime
+
+    def watch():
+        while True:
+            time.sleep(1)
+            try:
+                if me.stat().st_mtime != mtime:
+                    print("[relay] relay.py changed: reloading", flush=True)
+                    server.shutdown()
+                    return
+            except OSError:
+                pass
+
+    threading.Thread(target=watch, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        return
+    server.server_close()
+    time.sleep(0.5)
+    os.execv(sys.executable, [sys.executable, "-I", str(me)] + sys.argv[1:])
 
 
 if __name__ == "__main__":
