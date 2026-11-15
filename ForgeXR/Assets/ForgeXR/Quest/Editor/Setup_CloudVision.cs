@@ -32,6 +32,7 @@ namespace Forge.EditorTools
 
             var go = ForgeSetupUtil.GetOrCreateChild(rig.transform, Name);
             var cv = ForgeSetupUtil.GetOrAdd<Forge.CloudVisionClassifier>(go);
+            ForgeSetupUtil.GetOrAdd<Forge.RemoteConfig>(go); // live tuning from the laptop (relay /config)
             var so = new SerializedObject(cv);
             so.FindProperty("minInterval").floatValue = MinIntervalSeconds;
             so.FindProperty("requestTimeoutSeconds").intValue = RequestTimeoutSeconds;

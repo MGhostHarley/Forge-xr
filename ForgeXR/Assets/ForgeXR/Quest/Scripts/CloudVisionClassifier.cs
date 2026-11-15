@@ -67,6 +67,10 @@ namespace Forge
         /// walkthrough's pieces); the others ask only for <see cref="RequestedParts"/>.</summary>
         public int ProbeAllEveryN { get; set; }
 
+        /// <summary>Walkthrough state sent as X-State ("driver,step=0,complete=false") so the relay can choose the
+        /// parts to ask for (laptop-side policy). Set by QuestWalkthroughDriver.</summary>
+        public string WalkthroughState { get; set; }
+
         void Start()
         {
             try
@@ -162,6 +166,8 @@ namespace Forge
                 timeout = requestTimeoutSeconds,
             };
             req.SetRequestHeader("X-Frame-Id", frameId.ToString());
+            req.SetRequestHeader("X-Request-Seq", requests.ToString());
+            if (!string.IsNullOrEmpty(WalkthroughState)) req.SetRequestHeader("X-State", WalkthroughState);
             var probeAll = ProbeAllEveryN > 0 && requests % ProbeAllEveryN == 0;
             if (!probeAll && RequestedParts != null && RequestedParts.Length > 0)
                 req.SetRequestHeader("X-Parts", string.Join(",", RequestedParts));

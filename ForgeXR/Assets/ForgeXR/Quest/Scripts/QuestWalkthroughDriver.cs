@@ -270,6 +270,7 @@ namespace Forge
                 // and on the completion screen, 1 request in 4 asks for every part so auto-select can switch.
                 cloud.RequestedParts = flow == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging;
                 cloud.ProbeAllEveryN = (step == 0 || complete) ? 4 : 0;
+                cloud.WalkthroughState = $"{(flow == Flow.Wheel ? "wheel" : "driver")},step={step},complete={(complete ? "true" : "false")}";
             }
         }
 
