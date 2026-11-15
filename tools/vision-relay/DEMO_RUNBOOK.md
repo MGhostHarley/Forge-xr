@@ -5,6 +5,13 @@ The Quest app sends camera frames over the USB cable to the laptop relay, which 
 
 ## 1. Before the demo (2 min)
 
+Quick path: `tools/vision-relay/start_demo.sh` (port forward + relay with both models + app), then put the
+headset on, look at the table and run `tools/vision-relay/preflight.sh` until it prints READY.
+Default models: `~/forge-models/pieces-e12.pt,~/forge-models/pieces-e5.pt` (ensemble: e12 is best in the dim
+room, e5 generalises better to bright spaces). Override with `FORGE_WEIGHTS=...`.
+
+Manual path:
+
 ```bash
 cd Forge-xr
 # a) USB + port forward (re-run after any replug / adb restart)

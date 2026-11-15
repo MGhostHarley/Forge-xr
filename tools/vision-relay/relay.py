@@ -152,28 +152,32 @@ class LocalYoloDetector:
     Needs the detector venv (ultralytics): run the relay with ~/.venvs/forge-detector/bin/python."""
 
     def __init__(self, weights, conf=0.3, imgsz=640):
+        """weights: one .pt or a comma list (ensemble: every model runs, best box per part wins). The epoch-12
+        model is strong in the dim room it was tuned on; the epoch-5 one generalises better to bright spaces."""
         from ultralytics import YOLO
-        self.yolo = YOLO(weights)
+        paths = [w for w in str(weights).split(",") if w]
+        self.yolos = [YOLO(w) for w in paths]
         self.conf, self.imgsz = conf, imgsz
         # Weakly learned classes (few/odd pseudo-labels) score low; accept them at a lower cutoff.
         self.part_conf = {"hairpiece": 0.15, "torso": 0.2, "legs": 0.2}
-        self.model = "local:" + pathlib.Path(weights).name
+        self.model = "local:" + "+".join(pathlib.Path(w).name for w in paths)
         self._lock = threading.Lock()  # ultralytics predict is not thread-safe
 
     def detect(self, jpeg_bytes, parts=None):
         parts = [p for p in (parts or PARTS) if p in PARTS] or list(PARTS)
         im = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
         floor = min([self.conf] + list(self.part_conf.values()))
-        with self._lock:
-            r = self.yolo.predict(im, conf=floor, imgsz=self.imgsz, verbose=False)[0]
         best = {}
-        for b in r.boxes:
-            part = self.yolo.names[int(b.cls.item())]
-            c = float(b.conf.item())
-            if c < self.part_conf.get(part, self.conf):
-                continue
-            if part in parts and (part not in best or c > best[part][0]):
-                best[part] = (c, b.xyxyn[0].tolist())
+        for yolo in self.yolos:
+            with self._lock:
+                r = yolo.predict(im, conf=floor, imgsz=self.imgsz, verbose=False)[0]
+            for b in r.boxes:
+                part = yolo.names[int(b.cls.item())]
+                c = float(b.conf.item())
+                if c < self.part_conf.get(part, self.conf):
+                    continue
+                if part in parts and (part not in best or c > best[part][0]):
+                    best[part] = (c, b.xyxyn[0].tolist())
         out = [{"partId": p, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                 # The relay's threshold already filtered; report as trusted like the cloud answers (Quest drops < 0.5).
                 "confidence": 0.8, "score": round(c, 3)} for p, (c, (x0, y0, x1, y1)) in best.items()]
