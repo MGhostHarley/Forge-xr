@@ -8,18 +8,40 @@ A builder wears the Quest at a table with loose LEGO pieces (set 40650, Land Rov
 
 ```mermaid
 flowchart LR
-    A["Quest passthrough camera"] -->|"JPEG over USB (adb reverse :8787)"| B["Laptop relay<br/>tools/vision-relay/relay.py"]
-    B -->|"part boxes + stepComplete"| C["PieceLocator<br/>image ray → table hit"]
-    C --> D["PieceTracker + ColorPieceTracker<br/>smoothing between answers"]
-    D --> E["PickupSpot rings + FloatingCue<br/>instruction, Next / Reset"]
-    B -->|"step done"| F["StepCelebration<br/>chime + confetti + advance"]
+    subgraph Quest["Meta Quest 3 · Unity app"]
+        cam["CameraFrameSource<br/>frame + camera pose"]
+        cvc["CloudVisionClassifier<br/>POST /detect ≈5/s"]
+        loc["PieceLocator → TableSurface<br/>box ray onto the table"]
+        trk["PieceTracker + ColorPieceTracker"]
+        ui["PickupSpot boxes · FloatingCue<br/>QuestWalkthroughDriver"]
+        cel["StepCelebration<br/>chime + confetti + advance"]
+        cfg["RemoteConfig"]
+    end
+    subgraph Laptop["Laptop · tools/vision-relay/relay.py"]
+        det["Detector<br/>YOLO e12+e5 (local)<br/>+ Nemotron every ~4 s (hybrid)"]
+        judge["StepJudge · step_check.py<br/>parts touching ≥1 s → VLM yes/no"]
+        files["quest_config.json<br/>step_config.json"]
+    end
+    nv["NVIDIA API<br/>Nemotron VL"]
+    subgraph Offline["Offline training"]
+        train["relay logs → label_frames.py<br/>→ build_dataset.py → YOLO train"]
+    end
+
+    cam --> cvc -->|"JPEG + step state<br/>USB, adb reverse :8787"| det
+    det --> judge
+    judge -->|"boxes + stepComplete"| loc --> trk --> ui
+    judge -->|"stepComplete"| cel
+    det <-->|"hybrid"| nv
+    judge <-->|"confirm"| nv
+    files -->|"GET /config, 3 s"| cfg
+    train -.->|"~/forge-models/*.pt"| det
 ```
 
 1. **Camera frames.** `CameraFrameSource` reads passthrough CPU images (Unity OpenXR: Meta camera subsystem). `PassthroughCameraModel` gets the lens pose from Android Camera2 over JNI, because the Meta OpenXR package has no C# API for it.
 2. **Detection on the laptop.** `CloudVisionClassifier` POSTs each frame to the relay with the current walkthrough state. The relay answers with normalized boxes per part ID. It runs one of three detectors:
-   - `local`: fine-tuned YOLO (Ultralytics), with an ensemble of two weight files by default. This is the demo default.
+   - `local`: fine-tuned YOLO (Ultralytics), an ensemble of two weight files. Fast, offline; best in the dim room it was tuned in.
    - `nvidia`: NVIDIA Nemotron VL (`nemotron-3.5-super-vl-120b-a12b`). Cloud-hosted and rate limited.
-   - `hybrid`: local, plus a background Nemotron check every few seconds.
+   - `hybrid`: local, plus a background Nemotron check every few seconds. Recommended for an unseen or bright room.
 3. **Placement on the table, no markers or manual alignment.** `PieceLocator` casts the box center through the camera intrinsics and pose. `TableSurface` finds where that ray meets the table, using Space Setup planes, the observed fingertip height, or a head-height fallback. `PieceTracker` smooths and de-jitters each part. `ColorPieceTracker` follows pieces by color histogram between detector answers. `ForgeHands` keeps a piece's ring while a hand covers it.
 4. **Walkthrough and UI.** `QuestWalkthroughDriver` runs Harley's `DemoWalkthrough` (Driver + Wheel) headlessly. It picks the walkthrough from the parts it sees on the table, highlights the step's parts through `HighlightRegistry`, and pushes `n/N: instruction` to `FloatingCue`. There are no reference photos on Quest; those are in the desktop scenes only.
 5. **Automatic step completion.** `step_check.py` on the relay watches for the step's two parts touching for a moment. It then confirms with a yes/no question to the VLM, or falls back to geometry alone when the VLM is unavailable. It tags the answer with `stepComplete`, and `StepCelebration` plays a chime and confetti and advances.
