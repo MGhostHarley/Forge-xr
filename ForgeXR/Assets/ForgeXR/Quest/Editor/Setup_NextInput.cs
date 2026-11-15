@@ -139,7 +139,7 @@ namespace Forge.EditorTools
             return ForgeSetupUtil.GetOrCreateChild(rig.transform, FloatingCueName);
         }
 
-        static FloatingCue GetCue()
+        internal static FloatingCue GetCue()
         {
             var go = GetCueRoot(out _);
             if (!go.TryGetComponent<FloatingCue>(out var cue) || cue.Text == null)
@@ -157,7 +157,7 @@ namespace Forge.EditorTools
             return rig.transform.Find(NextInputName).GetComponent<NextInput>();
         }
 
-        static PokeButton CreateButton(Transform parent, string name, string label, Vector2 size, Vector3 localPos)
+        internal static PokeButton CreateButton(Transform parent, string name, string label, Vector2 size, Vector3 localPos)
         {
             var go = ForgeSetupUtil.GetOrCreateChild(parent, name);
             go.transform.localPosition = localPos;

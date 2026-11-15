@@ -28,6 +28,7 @@ namespace Forge
         [SerializeField] TMP_Text instruction;
         [SerializeField] PokeButton nextButton;
         [SerializeField] PokeButton resetButton;
+        [SerializeField] PokeButton saveButton;
 
         [Header("Placement")]
         [Tooltip("Height (m) of the cue centre above the highlighted spot(s). Spot labels sit at 8-10.5 cm.")]
@@ -75,7 +76,8 @@ namespace Forge
             if (nextButton != null) nextButton.SetLabel(text);
         }
 
-        bool Engaged => (nextButton != null && nextButton.IsEngaged) || (resetButton != null && resetButton.IsEngaged);
+        bool Engaged => (nextButton != null && nextButton.IsEngaged) || (resetButton != null && resetButton.IsEngaged) ||
+                        (saveButton != null && saveButton.IsEngaged);
 
         void LateUpdate()
         {
