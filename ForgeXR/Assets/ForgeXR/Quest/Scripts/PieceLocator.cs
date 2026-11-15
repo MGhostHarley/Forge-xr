@@ -81,6 +81,7 @@ namespace Forge
                 if (!best.TryGetValue(d.partId, out var b) || d.confidence > b.confidence) best[d.partId] = d;
             }
 
+            placedIds.Clear(); noPlaceIds.Clear();
             foreach (var d in best.Values)
             {
                 detections++;
@@ -88,7 +89,8 @@ namespace Forge
                 if (d.frameId > 0 && d.frameId != frame.frameId && !history.TryGetValue(d.frameId, out source))
                     continue; // computed on a frame older than the pose history: can't place it reliably
                 var ray = source.ImagePointToRay(d.imagePoint);
-                if (!table.TryPlace(ray, out var p, out var inHand)) continue;
+                if (!table.TryPlace(ray, out var p, out var inHand)) { noPlaceIds.Add(d.partId); continue; }
+                placedIds.Add(inHand ? d.partId + "(hand)" : d.partId);
                 var dist = Vector3.Distance(p, source.cameraPose.position);
                 var size = d.imageBox.width > 0f && source.focalLength.x > 0f
                     ? new Vector2(d.imageBox.width * source.intrinsicsResolution.x / source.focalLength.x,
@@ -103,6 +105,11 @@ namespace Forge
 
             if (c.LastCallWasAnswer)
             {
+                var filtered = new List<string>();
+                foreach (var id in best.Keys) if (!tracker.IsShownPart(id)) filtered.Add(id);
+                ForgeLog.Diag($"ANSWER f{(c.LastAnswerFrameId > 0 ? c.LastAnswerFrameId : frame.frameId)} got=[{string.Join(",", best.Keys)}] " +
+                              $"placed=[{string.Join(",", placedIds)}] notPlaced=[{string.Join(",", noPlaceIds)}] " +
+                              $"filteredOut=[{string.Join(",", filtered)}]");
                 seenThisAnswer.Clear();
                 foreach (var id in best.Keys) seenThisAnswer.Add(id);
                 var answerInfo = info;
@@ -113,6 +120,7 @@ namespace Forge
         }
 
         readonly HashSet<string> seenThisAnswer = new();
+        readonly List<string> placedIds = new(), noPlaceIds = new();
 
         void Update()
         {

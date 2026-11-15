@@ -61,6 +61,25 @@ namespace Forge
 
         HashSet<string> shownParts; // null = show every tracked part
 
+        /// <summary>Whether a part is drawn in the current walkthrough (diagnostics).</summary>
+        public bool IsShownPart(string partId) => shownParts == null || shownParts.Contains(partId);
+
+        float nextStateLog;
+
+        /// <summary>One line per tracked part: shown/hidden, missed answers, in hand (diagnostics).</summary>
+        public string StateSummary()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in tracks)
+            {
+                var t = kv.Value;
+                if (!t.everSeen) continue;
+                var state = t.visible ? "SHOWN" : !t.tracked ? "lost" : !IsShownPart(kv.Key) ? "filtered" : "hidden";
+                sb.Append($"{kv.Key}={state}(miss {t.missedAnswers}, age {Time.unscaledTime - t.lastSeen:F1}s) ");
+            }
+            return sb.Length > 0 ? sb.ToString() : "no parts seen yet";
+        }
+
         /// <summary>Only these parts get a visible ring (the current walkthrough's); others are still tracked.</summary>
         public void SetShownParts(IEnumerable<string> parts) => shownParts = parts == null ? null : new HashSet<string>(parts);
 
@@ -177,6 +196,11 @@ namespace Forge
 
         void Update()
         {
+            if (Time.unscaledTime >= nextStateLog)
+            {
+                nextStateLog = Time.unscaledTime + 2f;
+                ForgeLog.Diag("TRACKS " + StateSummary());
+            }
             if (Time.unscaledTime >= nextSpotScan) ScanSpots();
             var now = Time.unscaledTime;
             var k = smoothingTime > 1e-3f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / smoothingTime) : 1f;

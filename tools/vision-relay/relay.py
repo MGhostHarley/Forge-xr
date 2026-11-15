@@ -12,11 +12,11 @@ Response: {"detections": [{"partId", "x0", "y0", "x1", "y1", "confidence"}], "se
 with coordinates normalised 0-1 relative to the posted image (x from the left, y from the top).
 GET /health returns {"ok": true, "model": ...}.
 """
-import argparse, base64, io, json, os, pathlib, sys, threading, time
+import argparse, base64, collections, html, io, json, os, pathlib, statistics, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
@@ -33,14 +33,20 @@ PARTS = {
     "axle-pin": "small yellow axle pin sticking out of the left side of the LEGO car chassis",
 }
 
-PROMPT = (
-    "Find these LEGO parts on the table if they are visible:\n"
-    + "\n".join(f"- {k}: {v}" for k, v in PARTS.items())
-    + "\nReport every part you can see, including small or distant ones, but do not guess. Each part appears at most once. Reply with only JSON: "
-      '[{"label": one of the ids above, "x0": left, "y0": top, "x1": right, "y1": bottom}] '
-      "with coordinates normalized 0-1000 (x across the width from the left, y down the height from the top). "
-      "Reply [] if none are visible."
-)
+def build_prompt(parts):
+    """Prompt for a subset of PARTS (the Quest sends the active walkthrough's parts in X-Parts)."""
+    return (
+        "Find these LEGO parts on the table if they are visible:\n"
+        + "\n".join(f"- {k}: {PARTS[k]}" for k in parts)
+        + "\nReport every part you can see, including small or distant ones, but do not guess. Each part appears at most "
+          "once; anything else on the table is not one of these parts. Reply with only JSON: "
+          '[{"label": one of the ids above, "x0": left, "y0": top, "x1": right, "y1": bottom}] '
+          "with coordinates normalized 0-1000 (x across the width from the left, y down the height from the top). "
+          "Reply [] if none are visible."
+    )
+
+
+PROMPT = build_prompt(PARTS)
 
 
 def nvidia_key():
@@ -74,7 +80,8 @@ class NvidiaDetector:
         self.upscale_to = upscale_to
         self._local = threading.local()  # one HTTP session per relay thread (requests in parallel)
 
-    def detect(self, jpeg_bytes):
+    def detect(self, jpeg_bytes, parts=None):
+        parts = [p for p in (parts or PARTS) if p in PARTS] or list(PARTS)
         im = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
         if max(im.size) < self.upscale_to:  # small Quest frames read better upscaled
             s = self.upscale_to / max(im.size)
@@ -88,7 +95,7 @@ class NvidiaDetector:
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": [
                 {"role": "user", "content": [
-                    {"type": "text", "text": PROMPT},
+                    {"type": "text", "text": build_prompt(parts)},
                     {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}},
                 ]},
             ],
@@ -102,7 +109,7 @@ class NvidiaDetector:
         content = r.json()["choices"][0]["message"].get("content") or ""
         out = []
         for d in parse_json_array(content):
-            if not isinstance(d, dict) or d.get("label") not in PARTS:
+            if not isinstance(d, dict) or d.get("label") not in parts:
                 continue
             try:
                 x0, y0, x1, y1 = (float(d[k]) / 1000.0 for k in ("x0", "y0", "x1", "y1"))
@@ -132,9 +139,57 @@ class RateLimiter:
             return True
 
 
+COLORS = {"legs": "#d2b48c", "torso": "#1e9bff", "head": "#ffd400", "hairpiece": "#ff8c00",
+          "tire": "#ff3030", "rim": "#00e0e0", "axle-pin": "#ff00ff"}
+
+
+def annotate(jpeg, dets, caption):
+    """The frame with each detection's box and label drawn on, plus a caption bar (for the review page)."""
+    im = Image.open(io.BytesIO(jpeg)).convert("RGB")
+    d = ImageDraw.Draw(im)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(14, im.width // 40))
+    except OSError:
+        font = ImageFont.load_default()
+    w, h = im.size
+    for x in dets:
+        c = COLORS.get(x["partId"], "#ffffff")
+        box = (x["x0"] * w, x["y0"] * h, x["x1"] * w, x["y1"] * h)
+        d.rectangle(box, outline=c, width=max(3, w // 200))
+        d.text((box[0] + 3, max(0, box[1] - font.size - 3)), x["partId"], fill=c, font=font)
+    d.rectangle((0, h - font.size - 10, w, h), fill="#000000")
+    d.text((6, h - font.size - 6), caption, fill="#ffffff", font=font)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=80)
+    return buf.getvalue()
+
+
+REVIEW_HTML = """<!doctype html><html><head><meta charset=utf-8><title>Forge relay review</title>
+<meta http-equiv=refresh content=2>
+<style>body{{background:#111;color:#ddd;font:14px sans-serif;margin:12px}}.g{{display:grid;
+grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}}figure{{margin:0}}img{{width:100%;border-radius:6px}}
+figcaption{{font-size:12px;color:#aaa;padding:2px}}.s{{margin-bottom:10px;color:#fff}}</style></head><body>
+<div class=s>{stats}</div><div class=g>{items}</div></body></html>"""
+
+
 def make_handler(detector, log_dir, limiter):
     lock = threading.Lock()
     counter = {"n": 0}
+    recent = collections.deque(maxlen=48)  # newest last: dicts with n, t, frame, seconds, parts, dets, err
+    images = {}                            # n -> annotated jpeg (only for entries in `recent`)
+
+    def stats_text():
+        now = time.time()
+        rows = [r for r in recent if now - r["t"] < 300]
+        if not rows:
+            return "no answers in the last 5 min"
+        lat = [r["seconds"] for r in rows if not r["err"]]
+        per = collections.Counter(x["partId"] for r in rows for x in r["dets"])
+        hit = sum(1 for r in rows if r["dets"])
+        errs = sum(1 for r in rows if r["err"])
+        return (f"last 5 min: {len(rows)} answers, {hit} with detections, {errs} errors, "
+                f"median {statistics.median(lat) if lat else 0:.1f}s | per part: "
+                + ", ".join(f"{k} {v}" for k, v in per.most_common()))
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, obj):
@@ -145,9 +200,39 @@ def make_handler(detector, log_dir, limiter):
             self.end_headers()
             self.wfile.write(data)
 
+        def _raw(self, code, data, ctype):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self):
             if self.path.startswith("/health"):
                 self._send(200, {"ok": True, "model": detector.model})
+            elif self.path.startswith("/review"):
+                with lock:
+                    rows = list(recent)[::-1]
+                items = "".join(
+                    f"<figure><img src='/img/{r['n']}.jpg'><figcaption>#{r['n']} frame {html.escape(str(r['frame']))} "
+                    f"{r['seconds']:.1f}s asked: {html.escape(r['parts'])} &rarr; "
+                    f"{html.escape(r['err'] or (', '.join(x['partId'] for x in r['dets']) or 'nothing'))}</figcaption></figure>"
+                    for r in rows)
+                self._raw(200, REVIEW_HTML.format(stats=html.escape(stats_text()), items=items).encode(), "text/html; charset=utf-8")
+            elif self.path.startswith("/img/"):
+                try:
+                    n = int(self.path[5:].split(".")[0])
+                except ValueError:
+                    n = -1
+                with lock:
+                    data = images.get(n)
+                if data:
+                    self._raw(200, data, "image/jpeg")
+                else:
+                    self._send(404, {"error": "gone"})
+            elif self.path.startswith("/stats"):
+                self._send(200, {"summary": stats_text()})
             else:
                 self._send(404, {"error": "not found"})
 
@@ -164,23 +249,40 @@ def make_handler(detector, log_dir, limiter):
                 self._send(200, {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"})
                 print(f"[relay] frame {frame_id}: skipped, over {limiter.per_minute}/min", flush=True)
                 return
+            wanted = [p.strip() for p in self.headers.get("X-Parts", "").split(",") if p.strip()]
             try:
-                dets, raw = detector.detect(jpeg)
+                dets, raw = detector.detect(jpeg, wanted or None)
                 err = None
             except Exception as e:  # noqa: BLE001 - report to the Quest, keep serving
                 dets, raw, err = [], "", str(e)
             dt = time.time() - t0
             self._send(200, {"detections": dets, "seconds": round(dt, 2), "model": detector.model, "error": err})
             labels = ", ".join(d["partId"] for d in dets) or "-"
-            print(f"[relay] frame {frame_id}: {dt:.1f}s {err or labels}", flush=True)
+            asked = ",".join(wanted) if wanted else "all"
+            print(f"[relay] frame {frame_id}: {dt:.1f}s asked={asked} -> {err or labels}", flush=True)
+            with lock:
+                counter["n"] += 1
+                n = counter["n"]
+            try:
+                ann = annotate(jpeg, dets, f"#{n} f{frame_id} {dt:.1f}s asked={asked} -> {err or labels}")
+            except Exception:  # noqa: BLE001 - diagnostics must never break serving
+                ann = None
+            with lock:
+                if len(recent) == recent.maxlen:
+                    images.pop(recent[0]["n"], None)
+                recent.append({"n": n, "t": time.time(), "frame": frame_id, "seconds": dt, "parts": asked,
+                               "dets": dets, "err": err})
+                if ann:
+                    images[n] = ann
             if log_dir:
-                with lock:
-                    counter["n"] += 1
-                    n = counter["n"]
                 stem = log_dir / f"{time.strftime('%H%M%S')}_{n:05d}_f{frame_id}"
                 stem.with_suffix(".jpg").write_bytes(jpeg)
                 stem.with_suffix(".json").write_text(json.dumps(
-                    {"frameId": frame_id, "seconds": dt, "detections": dets, "error": err, "raw": raw}, indent=1))
+                    {"frameId": frame_id, "seconds": dt, "parts": asked, "detections": dets, "error": err, "raw": raw},
+                    indent=1))
+                if ann:
+                    (log_dir / "annotated").mkdir(exist_ok=True)
+                    (log_dir / "annotated" / (stem.name + ".jpg")).write_bytes(ann)
 
         def log_message(self, *args):  # quiet default access log
             pass
@@ -204,6 +306,7 @@ def main():
         log_dir.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((a.host, a.port), make_handler(detector, log_dir, RateLimiter(a.max_per_minute)))
     print(f"[relay] {detector.model} on http://{a.host}:{a.port}  (log: {log_dir or 'off'})", flush=True)
+    print(f"[relay] live review page: http://127.0.0.1:{a.port}/review", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

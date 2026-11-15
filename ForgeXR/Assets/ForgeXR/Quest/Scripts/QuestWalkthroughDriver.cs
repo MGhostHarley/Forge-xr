@@ -46,6 +46,7 @@ namespace Forge
         [SerializeField] NextInput input;
         [SerializeField] FloatingCue cue;
         [SerializeField] PieceTracker tracker;
+        CloudVisionClassifier cloud;
 
         [Tooltip("Driver: part ids to highlight per step, by step index.")]
         [SerializeField] List<StepTargets> driverSteps = new()
@@ -259,6 +260,13 @@ namespace Forge
             }
 
             HighlightRegistry.Highlight(complete ? Array.Empty<string>() : PartsFor(step));
+
+            // Ask the vision model only for this walkthrough's parts while building; all parts before step 1 and
+            // after completion, so auto-select can still tell the driver and wheel pieces apart.
+            if (cloud == null) cloud = FindAnyObjectByType<CloudVisionClassifier>();
+            if (cloud != null)
+                cloud.RequestedParts = (step == 0 || complete) ? null
+                    : (flow == Flow.Wheel ? PartIds.WheelStaging : PartIds.DriverStaging);
         }
 
         string[] PartsFor(int step)

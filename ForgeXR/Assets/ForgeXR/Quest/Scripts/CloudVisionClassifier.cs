@@ -57,6 +57,12 @@ namespace Forge
 
         public string RelayUrl => relayUrl;
 
+        /// <summary>
+        /// Part ids to ask the model for (sent as X-Parts); null or empty = every part. Set by QuestWalkthroughDriver to
+        /// the active walkthrough's parts mid-build, so other walkthroughs' labels can't be confused in.
+        /// </summary>
+        public string[] RequestedParts { get; set; }
+
         void Start()
         {
             try
@@ -152,6 +158,8 @@ namespace Forge
                 timeout = requestTimeoutSeconds,
             };
             req.SetRequestHeader("X-Frame-Id", frameId.ToString());
+            if (RequestedParts != null && RequestedParts.Length > 0)
+                req.SetRequestHeader("X-Parts", string.Join(",", RequestedParts));
             yield return req.SendWebRequest();
             lastLatency = Time.unscaledTime - started;
             inFlight--;
