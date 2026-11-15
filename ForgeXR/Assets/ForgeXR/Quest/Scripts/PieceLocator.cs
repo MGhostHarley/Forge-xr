@@ -94,7 +94,19 @@ namespace Forge
                 placed++;
                 lastPlacement = $"{d.partId}@{p:F3} img={d.imagePoint:F2} conf={d.confidence:F2} table={table.LastSource}";
             }
+
+            if (c.LastCallWasAnswer)
+            {
+                seenThisAnswer.Clear();
+                foreach (var id in best.Keys) seenThisAnswer.Add(id);
+                var answerInfo = info;
+                var af = c.LastAnswerFrameId;
+                if (af <= 0 || af == frame.frameId || history.TryGetValue(af, out answerInfo))
+                    tracker.OnClassifierAnswer(seenThisAnswer, answerInfo);
+            }
         }
+
+        readonly HashSet<string> seenThisAnswer = new();
 
         void Update()
         {

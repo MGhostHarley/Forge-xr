@@ -49,5 +49,15 @@ namespace Forge
     {
         /// <summary>Clear <paramref name="results"/> and add every piece found in <paramref name="frame"/>.</summary>
         public abstract void Classify(CameraFrame frame, List<PieceDetection> results);
+
+        /// <summary>
+        /// True if the last Classify call delivered a classifier answer (possibly with no detections). Slow/async
+        /// classifiers return false on calls between answers, so pieces aren't counted as missed then.
+        /// Synchronous classifiers answer on every call (default).
+        /// </summary>
+        public virtual bool LastCallWasAnswer => true;
+
+        /// <summary>CameraFrame.frameId the last answer was computed on; 0 = the frame passed to that Classify call.</summary>
+        public virtual int LastAnswerFrameId => 0;
     }
 }

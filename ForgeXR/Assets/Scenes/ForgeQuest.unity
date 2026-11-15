@@ -502,6 +502,7 @@ GameObject:
   - component: {fileID: 245596509}
   - component: {fileID: 245596508}
   - component: {fileID: 245596507}
+  - component: {fileID: 245596512}
   m_Layer: 0
   m_Name: CameraPlacement
   m_TagString: Untagged
@@ -540,6 +541,7 @@ MonoBehaviour:
   classifier: {fileID: 1363910997}
   table: {fileID: 245596509}
   tracker: {fileID: 245596508}
+  colorTracker: {fileID: 0}
   statusLogInterval: 2
   captureHistory: 256
 --- !u!114 &245596508
@@ -630,6 +632,27 @@ MonoBehaviour:
   fallbackLatency: 0.05
   maxPlausibleAge: 0.5
   headPoseTimeOffset: 0
+--- !u!114 &245596512
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 245596505}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbafd4b52c7a5e4c49fb891abc3c5363, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Forge.ColorPieceTracker
+  tracker: {fileID: 0}
+  table: {fileID: 0}
+  cloud: {fileID: 0}
+  reportConfidence: 0.6
+  searchScale: 2.5
+  minMatch: 0.35
+  modelLifetime: 120
+  meanShiftIterations: 6
+  stride: 2
 --- !u!1 &262495700
 GameObject:
   m_ObjectHideFlags: 0

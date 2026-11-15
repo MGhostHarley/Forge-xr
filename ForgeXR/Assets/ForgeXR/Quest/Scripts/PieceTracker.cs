@@ -9,8 +9,8 @@ namespace Forge
     ///   - Blends each accepted measurement into the target and smooths the spot toward it.
     ///   - A jump larger than <see cref="jumpDistance"/> is only accepted after <see cref="jumpConfirmFrames"/>
     ///     consistent frames (the piece was moved), so a single misdetection doesn't teleport the highlight.
-    ///   - Holds the last position for <see cref="holdSeconds"/> when the piece isn't seen, or
-    ///     <see cref="handHoldSeconds"/> while a tracked hand is near it (hand covering the piece).
+    ///   - Holds the last position until <see cref="maxMissedAnswers"/> classifier answers in a row miss the piece while
+    ///     it is in view (<see cref="handMissedAnswers"/> while a tracked hand is near it, covering the piece).
     ///   - A spot never detected, or lost after the hold, is hidden until the piece is seen again.
     /// Spots are free in world space (StagingMat is an identity-pose container), never deactivated,
     /// so they stay registered in HighlightRegistry.
@@ -24,8 +24,10 @@ namespace Forge
         [SerializeField] float smoothingTime = 0.15f;
         [SerializeField] float jumpDistance = 0.12f;
         [SerializeField] int jumpConfirmFrames = 2;
-        [SerializeField] float holdSeconds = 1.5f;
-        [SerializeField] float handHoldSeconds = 4f;
+        [Tooltip("Hide a piece after this many classifier answers in a row miss it while its spot is in view.")]
+        [SerializeField] int maxMissedAnswers = 3;
+        [Tooltip("...or this many while a tracked hand is near it (hand covering the piece).")]
+        [SerializeField] int handMissedAnswers = 6;
         [SerializeField] float handNearDistance = 0.10f;
         [Tooltip("Show detected but not highlighted pieces (dim ring). Off = only the highlighted piece is shown.")]
         [SerializeField] bool showIdleSpots = true;
@@ -41,7 +43,7 @@ namespace Forge
             public Vector3 target;
             public float lastSeen = float.NegativeInfinity;
             /// <summary>Seconds the spot has been inside the camera view without a detection.</summary>
-            public float missedInView;
+            public int missedAnswers;
             public Vector3 pending;
             public int pendingCount;
             public bool snapNext = true;
@@ -99,7 +101,7 @@ namespace Forge
             }
 
             var now = Time.unscaledTime;
-            var lost = !t.everSeen || t.missedInView > CurrentHold(t);
+            var lost = !t.everSeen || t.missedAnswers >= MaxMisses(t);
             if (lost)
             {
                 t.target = tablePoint;
@@ -122,14 +124,28 @@ namespace Forge
 
             t.everSeen = true;
             t.lastSeen = now;
-            t.missedInView = 0f;
+            t.missedAnswers = 0;
         }
 
-        float CurrentHold(Track t)
+        int MaxMisses(Track t)
         {
             if (t.spot != null && ForgeHands.NearestHandDistance(t.spot.transform.position) < handNearDistance)
-                return Mathf.Max(holdSeconds, handHoldSeconds);
-            return holdSeconds;
+                return Mathf.Max(maxMissedAnswers, handMissedAnswers);
+            return maxMissedAnswers;
+        }
+
+        /// <summary>
+        /// A classifier answer arrived for the frame with <paramref name="info"/>: every tracked piece whose spot was in
+        /// that frame's view but not in <paramref name="seen"/> counts one miss. Out-of-frame pieces are held.
+        /// </summary>
+        public void OnClassifierAnswer(ICollection<string> seen, in CaptureInfo info)
+        {
+            foreach (var kv in tracks)
+            {
+                var t = kv.Value;
+                if (!t.everSeen || seen.Contains(kv.Key)) continue;
+                if (info.IsInView(t.target)) t.missedAnswers++;
+            }
         }
 
         void Update()
@@ -138,18 +154,13 @@ namespace Forge
             var now = Time.unscaledTime;
             var k = smoothingTime > 1e-3f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / smoothingTime) : 1f;
 
-            if (frameSource == null) frameSource = FindAnyObjectByType<CameraFrameSource>();
-            var haveCapture = frameSource != null && frameSource.HasCapture;
 
             foreach (var t in tracks.Values)
             {
                 if (t.spot == null) continue;
-                // A piece that is simply out of the camera's view (the camera follows the head, not the eyes) is
-                // held where it was last seen; only time spent in view without a detection counts toward losing it.
-                if (t.everSeen && now - t.lastSeen > missedGraceSeconds &&
-                    (!haveCapture || frameSource.LatestCapture.IsInView(t.target)))
-                    t.missedInView += Time.unscaledDeltaTime;
-                var tracked = t.everSeen && t.missedInView <= CurrentHold(t);
+                // Held until enough classifier answers in a row miss it while in view (OnClassifierAnswer); out-of-frame
+                // pieces are held where they were last seen (the camera follows the head, not the eyes).
+                var tracked = t.everSeen && t.missedAnswers < MaxMisses(t);
                 if (tracked)
                 {
                     var tr = t.spot.transform;

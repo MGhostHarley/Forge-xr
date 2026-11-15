@@ -35,6 +35,10 @@ namespace Forge
         [Serializable] class RelayResponse { public RelayDetection[] detections; public float seconds; public string model; public string error; }
 
         readonly List<PieceDetection> pending = new();
+        bool lastCallWasAnswer;
+        int pendingFrameId, answerFrameId;
+        public override bool LastCallWasAnswer => lastCallWasAnswer;
+        public override int LastAnswerFrameId => answerFrameId;
         // Downsampled copies of recently sent frames, so ColorPieceTracker can learn colours from the exact frame.
         const int SnapshotSize = 320, SnapshotCount = 3;
         readonly Queue<(int id, Color32[] px, int w, int h)> snapshots = new();
@@ -72,11 +76,13 @@ namespace Forge
         public override void Classify(CameraFrame frame, List<PieceDetection> results)
         {
             results.Clear();
+            lastCallWasAnswer = hasPending;
             if (hasPending)
             {
                 results.AddRange(pending);
                 pending.Clear();
                 hasPending = false;
+                answerFrameId = pendingFrameId;
             }
 
             if (!busy && Time.unscaledTime >= nextRequest && frame?.pixels != null && frame.width > 0)
@@ -181,6 +187,7 @@ namespace Forge
                 });
             }
             lastCount = pending.Count;
+            pendingFrameId = frameId;
             hasPending = true;
         }
 
