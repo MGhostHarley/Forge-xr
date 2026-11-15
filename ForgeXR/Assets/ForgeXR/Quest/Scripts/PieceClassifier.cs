@@ -31,6 +31,11 @@ namespace Forge
         public float confidence;
         /// <summary>Optional normalised bounding box (same convention as imagePoint); zero size if unknown.</summary>
         public Rect imageBox;
+        /// <summary>
+        /// For slow / asynchronous classifiers: the <see cref="CameraFrame.frameId"/> this detection was computed on, so
+        /// it is projected with that frame's camera pose. 0 (default) = the frame passed to the current Classify call.
+        /// </summary>
+        public int frameId;
     }
 
     /// <summary>

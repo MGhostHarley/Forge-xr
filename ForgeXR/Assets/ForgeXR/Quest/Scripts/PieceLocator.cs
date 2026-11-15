@@ -19,7 +19,12 @@ namespace Forge
         [SerializeField] PieceTracker tracker;
         [SerializeField] float statusLogInterval = 2f;
 
+        [Tooltip("Camera poses of recent frames, for detections that arrive late (slow/cloud classifiers).")]
+        [SerializeField] int captureHistory = 256;
+
         readonly List<PieceDetection> results = new();
+        readonly Dictionary<int, CaptureInfo> history = new();
+        readonly Queue<int> historyOrder = new();
         readonly Dictionary<string, PieceDetection> best = new();
         int frames, detections, placed;
         string lastPlacement = "-";
@@ -56,6 +61,9 @@ namespace Forge
         void OnFrame(CameraFrame frame, CaptureInfo info)
         {
             frames++;
+            history[frame.frameId] = info;
+            historyOrder.Enqueue(frame.frameId);
+            while (historyOrder.Count > Mathf.Max(8, captureHistory)) history.Remove(historyOrder.Dequeue());
             var c = ResolveClassifier();
             if (c == null || table == null || tracker == null) return;
 
@@ -73,7 +81,10 @@ namespace Forge
             foreach (var d in best.Values)
             {
                 detections++;
-                var ray = info.ImagePointToRay(d.imagePoint);
+                var source = info;
+                if (d.frameId > 0 && d.frameId != frame.frameId && !history.TryGetValue(d.frameId, out source))
+                    continue; // computed on a frame older than the pose history: can't place it reliably
+                var ray = source.ImagePointToRay(d.imagePoint);
                 if (!table.TryIntersect(ray, out var p)) continue;
                 tracker.Report(d.partId, p, d.confidence);
                 placed++;

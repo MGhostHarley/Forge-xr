@@ -76,7 +76,7 @@ namespace Forge
         public string Status { get; private set; } = "starting";
 
         readonly CameraFrame frame = new();
-        int nextFrameId;
+        int nextFrameId = 1; // 0 is reserved: PieceDetection.frameId 0 means "the current frame"
         float nextCapture;
         double lastTimestamp = double.NaN;
 
@@ -164,7 +164,7 @@ namespace Forge
                 hasPending = true;
                 pendingStart = Time.unscaledTime;
 
-                if (FramesDelivered == 0 && nextFrameId == 0)
+                if (FramesDelivered == 0 && nextFrameId == 1)
                     Debug.Log($"[Forge] First camera image {image.width}x{image.height} {image.format} ts={image.timestamp} " +
                               $"intrinsics f={intrinsics.focalLength} c={intrinsics.principalPoint} res={intrinsics.resolution} " +
                               $"age={age:F3}s clock={cameraModel.ClockUsed}");
