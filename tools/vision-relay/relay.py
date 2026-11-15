@@ -23,19 +23,20 @@ NVIDIA_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 # Part ids must match Forge.PartIds on the Quest side.
 PARTS = {
-    "legs": "tan/beige LEGO minifigure legs",
-    "torso": "light-blue printed LEGO minifigure torso with yellow arms",
-    "head": "yellow LEGO minifigure head",
+    "legs": "tan/beige LEGO minifigure legs (hip piece with two legs)",
+    "torso": "light-blue printed LEGO minifigure torso; its two yellow arms belong to the torso",
+    "head": "yellow LEGO minifigure head: a small round yellow cylinder with a printed face (not the torso's arms, "
+            "not the yellow pin on the car)",
     "hairpiece": "orange LEGO minifigure hair piece",
-    "tire": "black LEGO rubber tire",
-    "rim": "LEGO wheel rim (hub) without a tire",
-    "axle-pin": "yellow axle pin sticking out of the left side of a LEGO car chassis",
+    "tire": "black rubber LEGO tire (a black ring), with or without a rim inside",
+    "rim": "grey or white plastic LEGO wheel hub on its own, without a tire",
+    "axle-pin": "small yellow axle pin sticking out of the left side of the LEGO car chassis",
 }
 
 PROMPT = (
     "Find these LEGO parts on the table if they are visible:\n"
     + "\n".join(f"- {k}: {v}" for k, v in PARTS.items())
-    + "\nOnly report parts you can actually see; do not guess. Reply with only JSON: "
+    + "\nReport every part you can see, including small or distant ones, but do not guess. Each part appears at most once. Reply with only JSON: "
       '[{"label": one of the ids above, "x0": left, "y0": top, "x1": right, "y1": bottom}] '
       "with coordinates normalized 0-1000 (x across the width from the left, y down the height from the top). "
       "Reply [] if none are visible."
