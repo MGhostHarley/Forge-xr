@@ -153,7 +153,7 @@ class LocalYoloDetector:
         self.yolo = YOLO(weights)
         self.conf, self.imgsz = conf, imgsz
         # Weakly learned classes (few/odd pseudo-labels) score low; accept them at a lower cutoff.
-        self.part_conf = {"hairpiece": 0.1, "torso": 0.2}
+        self.part_conf = {"hairpiece": 0.15, "torso": 0.2, "legs": 0.2}
         self.model = "local:" + pathlib.Path(weights).name
         self._lock = threading.Lock()  # ultralytics predict is not thread-safe
 
