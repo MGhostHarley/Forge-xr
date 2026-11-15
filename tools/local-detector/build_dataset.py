@@ -27,7 +27,7 @@ def main():
     for k, log in enumerate(a.logs):
         jsons += [(k, j) for j in sorted(pathlib.Path(log).resolve().glob("*.json"), key=lambda p: p.stat().st_mtime)]
     for k, j in jsons:
-        img = j.with_suffix(".jpg")
+        img = j.with_suffix(".jpg") if j.with_suffix(".jpg").exists() else j.with_suffix(".png")
         try:
             d = json.loads(j.read_text())
         except ValueError:
