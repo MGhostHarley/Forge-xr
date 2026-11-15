@@ -145,16 +145,25 @@ class NvidiaDetector:
 
 
 class RateLimiter:
-    """Sliding-window limit on upstream API calls (NVIDIA free tier: 40 requests/minute)."""
+    """Sliding-window limit on upstream API calls, plus a cooldown after the API answers 429 (its real limit is
+    stricter than the advertised 40/min)."""
 
-    def __init__(self, per_minute):
+    def __init__(self, per_minute, cooldown_seconds=20.0):
         self.per_minute = per_minute
+        self.cooldown_seconds = cooldown_seconds
         self.calls = []
+        self.blocked_until = 0.0
         self.lock = threading.Lock()
+
+    def note_rate_limited(self):
+        with self.lock:
+            self.blocked_until = time.time() + self.cooldown_seconds
 
     def try_acquire(self):
         now = time.time()
         with self.lock:
+            if now < self.blocked_until:
+                return False
             self.calls = [t for t in self.calls if now - t < 60.0]
             if self.per_minute > 0 and len(self.calls) >= self.per_minute:
                 return False
@@ -277,7 +286,7 @@ def make_handler(detector, log_dir, limiter):
             if not limiter.try_acquire():
                 # Over the upstream cap: answer at once with an error (the Quest backs off, boxes are kept).
                 self._send(200, {"detections": [], "seconds": 0, "model": detector.model, "error": "rate limited (relay)"})
-                print(f"[relay] frame {frame_id}: skipped, over {limiter.per_minute}/min", flush=True)
+                print(f"[relay] frame {frame_id}: skipped (over {limiter.per_minute}/min or cooling down after a 429)", flush=True)
                 return
             try:
                 seq = int(self.headers.get("X-Request-Seq", "0"))
@@ -289,6 +298,8 @@ def make_handler(detector, log_dir, limiter):
                 err = None
             except Exception as e:  # noqa: BLE001 - report to the Quest, keep serving
                 dets, raw, err = [], "", str(e)
+                if "429" in err:
+                    limiter.note_rate_limited()
             dt = time.time() - t0
             self._send(200, {"detections": dets, "seconds": round(dt, 2), "model": detector.model, "error": err})
             labels = ", ".join(d["partId"] for d in dets) or "-"
@@ -331,7 +342,7 @@ def main():
     ap.add_argument("--log-dir", default=str(pathlib.Path.home() / "forge-relay-log"),
                     help="save each frame + answer here (review / training data)")
     ap.add_argument("--no-log", action="store_true")
-    ap.add_argument("--max-per-minute", type=int, default=38, help="upstream API calls per minute (0 = no limit)")
+    ap.add_argument("--max-per-minute", type=int, default=25, help="upstream API calls per minute (0 = no limit)")
     a = ap.parse_args()
 
     detector = NvidiaDetector(nvidia_key())
