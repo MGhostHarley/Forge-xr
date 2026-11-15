@@ -1,16 +1,16 @@
 {
  "enabled": true,
- "expand": 0.3,
+ "expand": 0.1,
  "inside_margin": 0.15,
  "window": 5,
  "min_hits": 3,
  "hold_seconds": 1.0,
  "merge_seconds": 3.0,
  "vlm": true,
- "vlm_max_calls": 3,
+ "vlm_max_calls": 4,
  "vlm_min_gap_seconds": 4.0,
- "fallback_hold_seconds": 3.0,
+ "fallback_hold_seconds": 2.5,
  "fallback_ratio": 0.8,
  "fallback_require_apart": true,
- "fallback_after_vlm_no": false
+ "fallback_after_vlm_no": true
 }

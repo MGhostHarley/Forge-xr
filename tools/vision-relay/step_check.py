@@ -332,7 +332,8 @@ class StepJudge:
                     self.vlm_throttled = True
             if busy:
                 self.status_text += " | asking VLM"
-                return None
+                if not (cfg["fallback_after_vlm_no"] and any(not a for _, a in self.vlm_answers)):
+                    return None
 
             # Geometry-only fallback
             if held >= cfg["fallback_hold_seconds"] and self._fallback_allowed(cfg, t):
@@ -364,8 +365,10 @@ class StepJudge:
             return dict(self.confirmed)
 
     def _fallback_allowed(self, cfg, t):
-        if any(not a for _, a in self.vlm_answers) and not cfg["fallback_after_vlm_no"]:
-            return False
+        said_no = any(not a for _, a in self.vlm_answers)
+        if said_no:
+            # The VLM misreads dark / in-hand crops; with fallback_after_vlm_no a "no" doesn't block the geometry.
+            return cfg["fallback_after_vlm_no"]
         return not self._vlm_usable(cfg, t) or self.vlm_throttled
 
     def _confirm(self, rule, advance, flow, step, via):
