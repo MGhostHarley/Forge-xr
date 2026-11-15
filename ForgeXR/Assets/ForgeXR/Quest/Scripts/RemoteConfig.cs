@@ -27,6 +27,7 @@ namespace Forge
             ["CloudVisionClassifier"] = typeof(CloudVisionClassifier), ["TableSurface"] = typeof(TableSurface),
             ["PickupSpot"] = typeof(PickupSpot), ["CameraFrameSource"] = typeof(CameraFrameSource),
             ["PieceLocator"] = typeof(PieceLocator), ["FloatingCue"] = typeof(FloatingCue),
+            ["StepCelebration"] = typeof(StepCelebration),
         };
 
         string lastJson;

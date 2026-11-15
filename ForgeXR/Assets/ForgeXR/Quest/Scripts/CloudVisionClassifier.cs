@@ -8,6 +8,25 @@ using UnityEngine.Networking;
 namespace Forge
 {
     /// <summary>
+    /// Optional "stepComplete" object of a relay /detect answer: the relay (tools/vision-relay/step_check.py) has
+    /// confirmed that the step in <see cref="state"/> (the X-State it was sent) is assembled.
+    /// </summary>
+    [Serializable]
+    public class RelayStepComplete
+    {
+        public string state;       // X-State this confirmation belongs to, e.g. "driver,step=0,complete=false"
+        public string flow;        // "driver" / "wheel"
+        public int step;           // 0-based step index
+        public string anchorPart;  // part id to celebrate at (PieceTracker position)
+        public string[] parts;     // anchor first, then the other part(s) of the step (fallback positions)
+        public float[] box;        // normalised x0, y0, x1, y1 of the pair in frame frameId
+        public int frameId;
+        public string via;         // "vlm" or "geometry"
+        public int advance = 1;    // steps completed by this event (wheel step 0 can complete 0 and 1 together)
+        public bool final;         // the walkthrough is complete after advancing
+    }
+
+    /// <summary>
     /// Piece classifier that asks a vision model through the laptop relay (tools/vision-relay/relay.py).
     /// At most one request in flight: when idle (and at most every <see cref="minInterval"/> s) the current frame is
     /// JPEG-encoded and POSTed to {relayUrl}/detect. When the answer arrives (seconds later) its boxes are reported once,
@@ -36,7 +55,14 @@ namespace Forge
         [SerializeField] float statusLogInterval = 5f;
 
         [Serializable] class RelayDetection { public string partId; public float x0, y0, x1, y1; public float confidence = -1f; }
-        [Serializable] class RelayResponse { public RelayDetection[] detections; public float seconds; public string model; public string error; }
+        [Serializable] class RelayResponse { public RelayDetection[] detections; public float seconds; public string model; public string error; public RelayStepComplete stepComplete; }
+
+        /// <summary>
+        /// Raised when the relay reports the current walkthrough step complete. Only for answers whose request was sent
+        /// with the same <see cref="WalkthroughState"/> that is still current (stale answers are dropped). The relay
+        /// repeats the event on every answer until the state changes, so listeners must dedupe by state.
+        /// </summary>
+        public event Action<RelayStepComplete> StepCompleted;
 
         readonly List<PieceDetection> pending = new();
         bool lastCallWasAnswer;
@@ -159,6 +185,7 @@ namespace Forge
             inFlight++;
             requests++;
             var started = Time.unscaledTime;
+            var sentState = WalkthroughState;
             using var req = new UnityWebRequest(relayUrl + "/detect", UnityWebRequest.kHttpVerbPOST)
             {
                 uploadHandler = new UploadHandlerRaw(jpg) { contentType = "image/jpeg" },
@@ -191,6 +218,13 @@ namespace Forge
                 failures++;
                 lastError = "bad JSON: " + e.Message;
                 yield break;
+            }
+            // Before the error check: the relay also attaches stepComplete to error / rate-limited answers.
+            var step = resp?.stepComplete;
+            if (step != null && !string.IsNullOrEmpty(step.state) && step.state == sentState && step.state == WalkthroughState)
+            {
+                try { StepCompleted?.Invoke(step); }
+                catch (Exception e) { Debug.LogException(e); }
             }
             if (!string.IsNullOrEmpty(resp?.error)) { failures++; lastError = resp.error; yield break; }
 
