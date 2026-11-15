@@ -561,6 +561,7 @@ MonoBehaviour:
   smoothingTime: 0.15
   jumpDistance: 0.12
   jumpConfirmFrames: 2
+  trustedConfidence: 0.75
   maxMissedAnswers: 3
   handMissedAnswers: 6
   handNearDistance: 0.1
@@ -652,6 +653,7 @@ MonoBehaviour:
   reportConfidence: 0.6
   searchScale: 2.5
   minMatch: 0.35
+  maxWeakFrames: 10
   modelLifetime: 120
   meanShiftIterations: 6
   stride: 2

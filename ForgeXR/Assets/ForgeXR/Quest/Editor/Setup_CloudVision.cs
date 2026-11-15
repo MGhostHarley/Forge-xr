@@ -14,7 +14,8 @@ namespace Forge.EditorTools
         const bool Enabled = true;
         public const string Name = "CloudVision";
         // Request pacing (written to the scene each setup run, so changing these takes effect on the next build).
-        const float MinIntervalSeconds = 1f;
+        const float MinIntervalSeconds = 0.5f;
+        const int MaxInFlight = 3;
         const int RequestTimeoutSeconds = 8;
         const float CameraFramesPerSecond = 10f;
 
@@ -34,6 +35,7 @@ namespace Forge.EditorTools
             var so = new SerializedObject(cv);
             so.FindProperty("minInterval").floatValue = MinIntervalSeconds;
             so.FindProperty("requestTimeoutSeconds").intValue = RequestTimeoutSeconds;
+            so.FindProperty("maxInFlight").intValue = MaxInFlight;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             // Colour tracking between slow answers, next to PieceTracker/PieceLocator on ForgeRig/CameraPlacement.

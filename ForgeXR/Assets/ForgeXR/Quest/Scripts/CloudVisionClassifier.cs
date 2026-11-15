@@ -25,6 +25,9 @@ namespace Forge
         [SerializeField] string relayUrl = "http://127.0.0.1:8787";
         [Tooltip("Minimum seconds between requests (one request is in flight at most).")]
         [SerializeField] float minInterval = 2f;
+        [Tooltip("Requests allowed in flight at once. With ~1.5 s answers and a 0.5 s interval, 3 gives a fresh answer "
+                 + "about every 0.5 s. The newest answer wins; answers older than the last one shown are dropped.")]
+        [SerializeField] int maxInFlight = 3;
         [Tooltip("Drop a stalled request after this long so detection keeps flowing (the API occasionally takes 40 s+).")]
         [SerializeField] int requestTimeoutSeconds = 8;
         [SerializeField, Range(30, 100)] int jpegQuality = 85;
@@ -41,9 +44,10 @@ namespace Forge
         public override bool LastCallWasAnswer => lastCallWasAnswer;
         public override int LastAnswerFrameId => answerFrameId;
         // Downsampled copies of recently sent frames, so ColorPieceTracker can learn colours from the exact frame.
-        const int SnapshotSize = 320, SnapshotCount = 3;
+        const int SnapshotSize = 320, SnapshotCount = 6; // >= maxInFlight + 1
         readonly Queue<(int id, Color32[] px, int w, int h)> snapshots = new();
-        bool busy, hasPending;
+        bool hasPending;
+        int inFlight, latestShownFrame, staleDropped;
         float nextRequest, nextStatus;
         Texture2D tex;
         Color32[] flipped;
@@ -86,7 +90,7 @@ namespace Forge
                 answerFrameId = pendingFrameId;
             }
 
-            if (!busy && Time.unscaledTime >= nextRequest && frame?.pixels != null && frame.width > 0)
+            if (inFlight < Mathf.Max(1, maxInFlight) && Time.unscaledTime >= nextRequest && frame?.pixels != null && frame.width > 0)
             {
                 nextRequest = Time.unscaledTime + minInterval;
                 var jpg = Encode(frame);
@@ -138,7 +142,7 @@ namespace Forge
 
         IEnumerator Send(byte[] jpg, int frameId)
         {
-            busy = true;
+            inFlight++;
             requests++;
             var started = Time.unscaledTime;
             using var req = new UnityWebRequest(relayUrl + "/detect", UnityWebRequest.kHttpVerbPOST)
@@ -150,7 +154,7 @@ namespace Forge
             req.SetRequestHeader("X-Frame-Id", frameId.ToString());
             yield return req.SendWebRequest();
             lastLatency = Time.unscaledTime - started;
-            busy = false;
+            inFlight--;
 
             if (req.result != UnityWebRequest.Result.Success)
             {
@@ -172,6 +176,9 @@ namespace Forge
             if (!string.IsNullOrEmpty(resp?.error)) { failures++; lastError = resp.error; yield break; }
 
             answers++;
+            // Overlapping requests can finish out of order: never replace a newer answer with an older one.
+            if (frameId <= latestShownFrame) { staleDropped++; yield break; }
+            latestShownFrame = frameId;
             pending.Clear();
             foreach (var d in resp?.detections ?? Array.Empty<RelayDetection>())
             {
@@ -197,7 +204,7 @@ namespace Forge
             if (statusLogInterval <= 0f || Time.unscaledTime < nextStatus) return;
             nextStatus = Time.unscaledTime + statusLogInterval;
             Debug.Log($"[Forge] CloudVision: relay={relayUrl} requests={requests} answers={answers} failures={failures} " +
-                      $"busy={busy} lastLatency={lastLatency:F1}s lastDetections={lastCount} lastError={lastError}");
+                      $"inFlight={inFlight} stale={staleDropped} lastLatency={lastLatency:F1}s lastDetections={lastCount} lastError={lastError}");
         }
     }
 }

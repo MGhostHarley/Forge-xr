@@ -72,7 +72,7 @@ class NvidiaDetector:
     def __init__(self, key, upscale_to=640):
         self.key = key
         self.upscale_to = upscale_to
-        self.session = requests.Session()
+        self._local = threading.local()  # one HTTP session per relay thread (requests in parallel)
 
     def detect(self, jpeg_bytes):
         im = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
@@ -93,7 +93,9 @@ class NvidiaDetector:
                 ]},
             ],
         }
-        r = self.session.post(NVIDIA_URL, json=body, timeout=120,
+        if not hasattr(self._local, "session"):
+            self._local.session = requests.Session()
+        r = self._local.session.post(NVIDIA_URL, json=body, timeout=120,
                               headers={"Authorization": f"Bearer {self.key}", "Accept": "application/json"})
         if r.status_code != 200:
             raise RuntimeError(f"NVIDIA HTTP {r.status_code}: {r.text[:200]}")
