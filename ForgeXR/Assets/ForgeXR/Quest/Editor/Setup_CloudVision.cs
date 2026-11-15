@@ -13,6 +13,9 @@ namespace Forge.EditorTools
     {
         const bool Enabled = true;
         public const string Name = "CloudVision";
+        // Request pacing (written to the scene each setup run, so changing these takes effect on the next build).
+        const float MinIntervalSeconds = 2f;
+        const int RequestTimeoutSeconds = 8;
 
         [ForgeSetupStep(515)]
         public static void InstallCloudVision()
@@ -26,7 +29,11 @@ namespace Forge.EditorTools
             }
 
             var go = ForgeSetupUtil.GetOrCreateChild(rig.transform, Name);
-            ForgeSetupUtil.GetOrAdd<Forge.CloudVisionClassifier>(go);
+            var cv = ForgeSetupUtil.GetOrAdd<Forge.CloudVisionClassifier>(go);
+            var so = new SerializedObject(cv);
+            so.FindProperty("minInterval").floatValue = MinIntervalSeconds;
+            so.FindProperty("requestTimeoutSeconds").intValue = RequestTimeoutSeconds;
+            so.ApplyModifiedPropertiesWithoutUndo();
 
             // Colour tracking between slow answers, next to PieceTracker/PieceLocator on ForgeRig/CameraPlacement.
             var placement = rig.transform.Find(Setup_CameraPlacement.PlacementName);

@@ -24,8 +24,9 @@ namespace Forge
 
         [SerializeField] string relayUrl = "http://127.0.0.1:8787";
         [Tooltip("Minimum seconds between requests (one request is in flight at most).")]
-        [SerializeField] float minInterval = 1f;
-        [SerializeField] int requestTimeoutSeconds = 60;
+        [SerializeField] float minInterval = 2f;
+        [Tooltip("Drop a stalled request after this long so detection keeps flowing (the API occasionally takes 40 s+).")]
+        [SerializeField] int requestTimeoutSeconds = 8;
         [SerializeField, Range(30, 100)] int jpegQuality = 85;
         [Tooltip("Confidence reported for relay detections that carry none.")]
         [SerializeField, Range(0f, 1f)] float defaultConfidence = 0.8f;

@@ -561,8 +561,8 @@ MonoBehaviour:
   smoothingTime: 0.15
   jumpDistance: 0.12
   jumpConfirmFrames: 2
-  holdSeconds: 1.5
-  handHoldSeconds: 4
+  maxMissedAnswers: 3
+  handMissedAnswers: 6
   handNearDistance: 0.1
   showIdleSpots: 1
   missedGraceSeconds: 0.4
