@@ -427,6 +427,9 @@ def make_handler(detector, log_dir, limiter, log_every=1, judge=None):
                     judge.reset()
                 self._send(200, {"ok": True})
                 return
+            if self.path.startswith("/step/force"):  # operator/debug: mark the current step complete now
+                self._send(200, {"ok": True, "confirmed": judge.force() if judge else None})
+                return
             if not self.path.startswith("/detect"):
                 self._send(404, {"error": "not found"})
                 return

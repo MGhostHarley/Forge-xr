@@ -348,6 +348,21 @@ class StepJudge:
         return (self.vlm is not None and cfg["vlm"] and self.vlm_calls < cfg["vlm_max_calls"]
                 and t >= self.vlm_down_until)
 
+    def force(self):
+        """Operator/debug: mark the current step complete now (POST /step/force). Returns the confirmation or None."""
+        with self.lock:
+            parsed = parse_state(self.state) if self.state else None
+            if not parsed:
+                return None
+            flow, step = parsed[0], parsed[1]
+            rule, advance = rule_for(flow, step)
+            if not rule:
+                return None
+            if self.last_cand is None:
+                self.last_cand = (0, None, None)
+            self._confirm(rule, advance, flow, step, "forced")
+            return dict(self.confirmed)
+
     def _fallback_allowed(self, cfg, t):
         if any(not a for _, a in self.vlm_answers) and not cfg["fallback_after_vlm_no"]:
             return False
