@@ -3,7 +3,7 @@
 
   python3 -I tools/vision-relay/label_frames.py SRC_DIR OUT_DIR [--per-minute 25]
 
-For every SRC_DIR/*.jpg not yet labelled, writes OUT_DIR/<name>.jpg (symlink) + OUT_DIR/<name>.json in the relay-log
+For every SRC_DIR/*.jpg|png not yet labelled, writes OUT_DIR/<name>.jpg (symlink) + OUT_DIR/<name>.json in the relay-log
 format, which tools/local-detector/build_dataset.py reads. Safe to re-run (skips done frames); retries after a 429.
 """
 import argparse, json, os, pathlib, sys, time
@@ -22,7 +22,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     det = relay.NvidiaDetector(relay.nvidia_key())
     gap = 60.0 / a.per_minute
-    todo = [f for f in sorted(src.glob("*.jpg")) if not (out / f.with_suffix(".json").name).exists()]
+    todo = [f for f in sorted(list(src.glob("*.jpg")) + list(src.glob("*.png"))) if not (out / f.with_suffix(".json").name).exists()]
     print(f"{len(todo)} frames to label", flush=True)
     for i, f in enumerate(todo):
         t0 = time.time()
