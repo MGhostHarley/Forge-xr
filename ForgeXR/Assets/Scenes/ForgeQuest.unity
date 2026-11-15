@@ -4989,8 +4989,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Forge.CloudVisionClassifier
   relayUrl: http://127.0.0.1:8787
-  minInterval: 1
-  requestTimeoutSeconds: 60
+  minInterval: 2
+  requestTimeoutSeconds: 8
   jpegQuality: 85
   defaultConfidence: 0.8
   statusLogInterval: 5

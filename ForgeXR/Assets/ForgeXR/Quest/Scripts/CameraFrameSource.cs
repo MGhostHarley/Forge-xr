@@ -96,8 +96,42 @@ namespace Forge
 
         void OnDisable() => DisposePending();
 
+        // ---- watchdog: the Meta camera can stop delivering CPU images after the app is paused (headset taken off)
+        [Tooltip("Restart the camera when no new frame has been delivered for this long (s) while the app runs.")]
+        [SerializeField] float stallRestartSeconds = 3f;
+        float lastDeliveredAt = -1f, lastRestartAt = -100f;
+        bool restartPending;
+        int cameraRestarts;
+
+        void OnApplicationPause(bool paused)
+        {
+            if (!paused) { lastDeliveredAt = Time.unscaledTime; RestartCamera("resumed"); }
+        }
+
+        void RestartCamera(string why)
+        {
+            if (cameraManager == null || restartPending || Time.unscaledTime - lastRestartAt < 2f) return;
+            DisposePending();
+            cameraManager.enabled = false; // re-enabled next frame so the subsystem stops and starts again
+            restartPending = true;
+            lastRestartAt = Time.unscaledTime;
+            cameraRestarts++;
+            Debug.Log($"[Forge] Restarting camera ({why}), restart #{cameraRestarts}");
+        }
+
         void Update()
         {
+            if (restartPending)
+            {
+                restartPending = false;
+                if (cameraManager != null) cameraManager.enabled = true;
+                lastDeliveredAt = Time.unscaledTime;
+                return;
+            }
+            if (lastDeliveredAt >= 0f && stallRestartSeconds > 0f && Time.unscaledTime - lastDeliveredAt > stallRestartSeconds &&
+                Time.unscaledTime - lastRestartAt > Mathf.Max(stallRestartSeconds, 5f))
+                RestartCamera($"no frame for {Time.unscaledTime - lastDeliveredAt:F1}s: {Status}");
+
             if (hasPending)
             {
                 PollPending();
@@ -235,6 +269,7 @@ namespace Forge
 
         void Deliver(CaptureInfo info)
         {
+            lastDeliveredAt = Time.unscaledTime;
             LatestCapture = info;
             HasCapture = true;
             FramesDelivered++;
