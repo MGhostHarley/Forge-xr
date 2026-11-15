@@ -35,6 +35,13 @@ Without `--no-log` the relay saves frames to `--log-dir` (default `~/forge-relay
 
 ## 3. During the demo
 
+Demo order: **Driver first** (all 4 parts detected, auto step-complete with chime + confetti), then **Wheel** as
+a short second act. For Wheel only the tire is detected; rim / axle highlights are missing and steps 2-3 need
+**Next** (or `/step/force`). Stay on `--detector local` for Wheel (Nemotron mislabels the tire as "rim").
+Keep wheel parts off the table during Driver (a stray "tire" can auto-switch the walkthrough), or lock the
+walkthrough with left-controller **Y**.
+
+
 - Instruction floats above the highlighted piece ("1/3: ..."). Pinch **Next** / **Reset** buttons.
 - Walkthrough Driver/Wheel is auto-picked from the parts on the table; force it with left-controller **Y**
   (or **W** in the editor).
